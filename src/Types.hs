@@ -46,14 +46,30 @@ apply :: Value -> Value -> Value
 apply (Closure n x scope) z = eval (M.insert n z scope) x
 apply _ z = error "can't apply a non closure"
 
+
 i :: Expr
-i = "x" `Lam` Var "x"
+i = λ"x" --> Var "x"
 
 k :: Expr
-k = "a" `Lam` ("b" `Lam` Var "a")
+k = λλ"a" "b" --> Var "a"
 
 s :: Expr
-s = "a" `Lam` ("b" `Lam` ("c" `Lam` (App (App (Var "a") (Var "c")) (App (Var "b") (Var "c")))))
+s = λλλ"a" "b" "c" --> (Var "a" `App` Var "c")
+                 `App` (Var "b" `App` Var "c")
+
+λ :: Name -> Expr -> Expr
+λ = Lam
+
+λλ :: Name -> Name -> Expr -> Expr
+λλ a b e = λ a --> λ b --> e
+
+λλλ :: Name -> Name -> Name -> Expr -> Expr
+λλλ a b c e = λ a --> λ b --> λ c --> e
+
+(-->) :: (a -> b) -> a -> b
+(-->) = ($)
+
+infixr 0 -->
 
 ski :: M.Map Name Value
 ski = [ ("s", eval M.empty s)
@@ -63,3 +79,4 @@ ski = [ ("s", eval M.empty s)
 
 apping :: String -> Expr
 apping = foldl (\b a -> App b (Var $ pure a)) (Var "i")
+
