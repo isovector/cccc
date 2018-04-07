@@ -62,6 +62,7 @@ data Exp a
   | Lit Lit
   | Exp a :@ Exp a
   | Lam (Scope () Exp a)
+  | Let (Scope () Exp a) (Scope () Exp a)
   deriving (Functor, Foldable, Traversable)
 
 data Type
@@ -80,8 +81,14 @@ instance Show Type where
 newtype TName = TName { unTName :: String }
   deriving (Eq, Ord, IsString)
 
+newtype VName = VName { unVName :: String }
+  deriving (Eq, Ord, IsString)
+
 instance Show TName where
   show = unTName
+
+instance Show VName where
+  show = unVName
 
 data Scheme = Scheme [TName] Type
   deriving (Eq, Ord, Show)
@@ -91,8 +98,19 @@ data Lit
   | LBool Bool
   deriving (Eq, Ord, Show)
 
+instance Applicative Exp where
+  pure = V
+  (<*>) = ap
 
-makeBound ''Exp
+instance Monad Exp where
+  return         = pure
+  V a      >>= f = f a
+  Lit x    >>= _ = Lit x
+  (x :@ y) >>= f = (x >>= f) :@ (y >>= f)
+  Lam e    >>= f = Lam (e >>>= f)
+  Let bs b >>= f = Let (bs >>>= f) (b >>>= f)
+
+
 deriveEq1 ''Exp
 deriveShow1 ''Exp
 
@@ -137,17 +155,25 @@ varBind u t | t == TVar u
                   ]
             | otherwise = pure [(u, t)]
 
-tiLit :: Lit -> TI (Subst, Type)
-tiLit (LInt _)  = pure (mempty, TInt)
-tiLit (LBool _) = pure (mempty, TBool)
-
 ti :: (Show a, Ord a) => (Int -> a) -> TypeEnv a -> Exp a -> TI (Subst, Type)
 ti _ (TypeEnv env) (V a) =
   case M.lookup a env of
     Nothing -> throwE $ "unbound variable: '" <> show a <> "'"
     Just sigma -> do
       (,) <$> pure mempty <*> instantiate sigma
-ti _ _ (Lit l) = tiLit l
+ti f env (Let bs b) = do
+  name <- newVName f
+  let e1 = splat pure (const $ pure name) bs
+      e2 = splat pure (const $ pure name) b
+  (s1, t1) <- ti f env e1
+  let t' = generalize (apply s1 env) t1
+      env' = TypeEnv $ M.insert name t' $ unTypeEnv env
+  (s2, t2) <- ti f (apply s1 env') e2
+  pure $ (composeSubst s1 s2, t2)
+  -- (s1, t1) <- ti env e1
+
+ti _ _ (Lit (LInt _))  = pure (mempty, TInt)
+ti _ _ (Lit (LBool _)) = pure (mempty, TBool)
 ti f (TypeEnv env) (Lam x) = do
   name <- newVName f
   tv <- newTyVar
@@ -162,11 +188,18 @@ ti f env exp@(e1 :@ e2) =
     (s2, t2) <- ti f (apply s1 env) e2
     s3 <- mgu (apply s2 t1) (TArr t2 tv)
     pure (composeSubst s3 $ composeSubst s2 s1, apply s3 tv)
-  `catchE` \e -> throwE $ e <> "\n in " <> show exp
+  `catchE` \e -> throwE $
+    mconcat
+      [ e
+      , "\n in "
+      , show exp
+      , "\n\ncontext: \n"
+      , show $ unTypeEnv env
+      ]
 
-typeInference :: Map String Scheme -> Exp String -> TI Type
+typeInference :: Map VName Scheme -> Exp VName -> TI Type
 typeInference env e = do
-  (s, t) <- ti (("v" <>) . show) (TypeEnv env) e
+  (s, t) <- ti (VName . ("!!!v" <>) . show) (TypeEnv env) e
   pure $ apply s t
 
 
@@ -191,22 +224,17 @@ instance Types Scheme where
   apply s (Scheme vars t) =
     Scheme vars $ apply (foldr M.delete s vars) t
 
-instance (Types a) => Types [a] where
-  free    = foldr (<>) S.empty . fmap free
-  apply s = fmap $ apply s
-
 type Subst = Map TName Type
 
 composeSubst :: Subst -> Subst -> Subst
 composeSubst s1 s2 = fmap (apply s1) s2 <> s1
 
-newtype TypeEnv a = TypeEnv { unTypeEnv :: Map a Scheme }
-
-remove :: Ord a => TypeEnv a -> a -> TypeEnv a
-remove (TypeEnv env) var = TypeEnv $ M.delete var env
+newtype TypeEnv a = TypeEnv
+  { unTypeEnv :: Map a Scheme
+  }
 
 instance Types (TypeEnv a) where
-  free = free . M.elems . unTypeEnv
+  free = mconcat . fmap free . M.elems . unTypeEnv
   apply s = TypeEnv . fmap (apply s) . unTypeEnv
 
 generalize :: TypeEnv a -> Type -> Scheme
@@ -214,15 +242,18 @@ generalize env t =
   Scheme (S.toList $ free t S.\\ free env) t
 
 
-freeVars :: Ord a => Exp a -> Set a
-freeVars (V a)    = [a]
-freeVars (Lit _)  = []
-freeVars (a :@ b) = freeVars a <> freeVars b
-freeVars (Lam x)  = S.fromList $ foldMapScope (const []) pure x
+-- freeVars :: Ord a => Exp a -> Set a
+-- freeVars (V a)    = [a]
+-- freeVars (Lit _)  = []
+-- freeVars (a :@ b) = freeVars a <> freeVars b
+-- freeVars (Lam x)  = S.fromList $ foldMapScope (const []) pure x
 
 
 lam :: Eq a => a -> Exp a -> Exp a
 lam x e = Lam (abstract1 x e)
+
+let_ :: Eq a => a -> Exp a -> Exp a -> Exp a
+let_ x v e = Let (abstract1 x v) (abstract1 x e)
 
 
 whnf :: Exp a -> Exp a
