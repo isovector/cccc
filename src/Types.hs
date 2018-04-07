@@ -66,6 +66,7 @@ data Exp a
   | Exp a :@ Exp a
   | Lam (Scope () Exp a)
   | Let (Scope () Exp a) (Scope () Exp a)
+  | Assert (Exp a) Type
   deriving (Functor, Foldable, Traversable)
 
 instance IsString a => IsString (Exp a) where
@@ -74,7 +75,6 @@ instance IsString a => IsString (Exp a) where
 data Type
   = TVar TName
   | TInt
-  | TBool
   | TArr Type Type
   | TProd Type Type
   | TSum Type Type
@@ -87,14 +87,14 @@ instance IsString Type where
 
 instance Show Type where
   showsPrec _ (TVar n)    = showString $ unTName n
-  showsPrec _ TInt        = showString $ "Int"
-  showsPrec _ TBool       = showString $ "Bool"
-  showsPrec _ TUnit       = showString $ "1"
-  showsPrec _ TVoid       = showString $ "0"
+  showsPrec _ TInt        = showString "Int"
+  showsPrec _ TUnit       = showString "1"
+  showsPrec _ TVoid       = showString "0"
   showsPrec x (TArr a b)  = showParen (x > 0)
     $ showsPrec 1 a
     . showString " -> "
     . showsPrec 0 b
+  showsPrec _ (TSum TUnit TUnit) = showString "Bool"
   showsPrec x (TProd a b) = showParen (x > 3)
     $ showsPrec 3 a
     . showString " * "
@@ -128,16 +128,17 @@ data Lit
   deriving (Eq, Ord, Show)
 
 instance Applicative Exp where
-  pure = V
+  pure  = V
   (<*>) = ap
 
 instance Monad Exp where
-  return         = pure
-  V a      >>= f = f a
-  Lit x    >>= _ = Lit x
-  (x :@ y) >>= f = (x >>= f) :@ (y >>= f)
-  Lam e    >>= f = Lam (e >>>= f)
-  Let bs b >>= f = Let (bs >>>= f) (b >>>= f)
+  return       = pure
+  V a        >>= f = f a
+  Lit x      >>= _ = Lit x
+  (x :@ y)   >>= f = (x >>= f) :@ (y >>= f)
+  Lam e      >>= f = Lam (e >>>= f)
+  Let bs b   >>= f = Let (bs >>>= f) (b >>>= f)
+  Assert e t >>= f = Assert (e >>= f) t
 
 
 deriveEq1 ''Exp
@@ -152,21 +153,24 @@ instantiate (Scheme vars t) = do
   nvars <- traverse (const newTyVar) vars
   pure $ apply (M.fromList (zip vars nvars)) t
 
-mgu :: Type -> Type -> TI Subst
-mgu (TArr l r) (TArr l' r') = do
-  s1 <- mgu l l'
-  s2 <- mgu (apply s1 r) (apply s1 r')
+unify :: Type -> Type -> TI Subst
+unify (TArr l r) (TArr l' r') = do
+  s1 <- unify l l'
+  s2 <- unify (apply s1 r) (apply s1 r')
   pure $ composeSubst s1 s2
--- does this want to be the same as the arrow case?
-mgu (TProd l r) (TProd l' r') =
-  composeSubst <$> mgu l l' <*> mgu r r'
-mgu (TSum l r) (TSum l' r') = do
-  composeSubst <$> mgu l l' <*> mgu r r'
-mgu (TVar u) t  = varBind u t
-mgu t (TVar u)  = varBind u t
-mgu TInt TInt   = pure mempty
-mgu TBool TBool = pure mempty
-mgu t1 t2       = throwE $
+unify (TProd l r) (TProd l' r') = do
+  s1 <- unify l l'
+  s2 <- unify (apply s1 r) (apply s1 r')
+  pure $ composeSubst s1 s2
+unify (TSum l r) (TSum l' r') = do
+  s1 <- unify l l'
+  s2 <- unify (apply s1 r) (apply s1 r')
+  pure $ composeSubst s1 s2
+unify (TVar u) t  = varBind u t
+unify t (TVar u)  = varBind u t
+unify TInt TInt   = pure mempty
+unify TBool TBool = pure mempty
+unify t1 t2       = throwE $
   mconcat
     [ "types don't unify: '"
     , show t1
@@ -189,36 +193,40 @@ varBind u t | t == TVar u
                   ]
             | otherwise = pure [(u, t)]
 
-ti :: (Show a, Ord a) => (Int -> a) -> TypeEnv a -> Exp a -> TI (Subst, Type)
-ti _ (TypeEnv env) (V a) =
+infer :: (Show a, Ord a) => (Int -> a) -> TypeEnv a -> Exp a -> TI (Subst, Type)
+infer f env (Assert e t) = do
+  (s1, t1) <- infer f env e
+  s2 <- unify t t1
+  pure (composeSubst s2 s1, t)
+infer _ (TypeEnv env) (V a) =
   case M.lookup a env of
     Nothing -> throwE $ "unbound variable: '" <> show a <> "'"
-    Just sigma -> do
-      (,) <$> pure mempty <*> instantiate sigma
-ti f env (Let bs b) = do
+    Just sigma -> (,) <$> pure mempty <*> instantiate sigma
+infer f env (Let bs b) = do
   name <- newVName f
   let e1 = splat pure (const $ pure name) bs
       e2 = splat pure (const $ pure name) b
-  (s1, t1) <- ti f env e1
+  (s1, t1) <- infer f env e1
   let t' = generalize (apply s1 env) t1
       env' = TypeEnv $ M.insert name t' $ unTypeEnv env
-  (s2, t2) <- ti f (apply s1 env') e2
+  (s2, t2) <- infer f (apply s1 env') e2
   pure (composeSubst s1 s2, t2)
-ti _ _ (Lit (LInt _))  = pure (mempty, TInt)
-ti _ _ (Lit (LBool _)) = pure (mempty, TBool)
-ti f (TypeEnv env) (Lam x) = do
+infer _ _ (Lit (LInt _))  = pure (mempty, TInt)
+infer _ _ (Lit (LBool _)) = pure (mempty, TBool)
+infer f (TypeEnv env) (Lam x) = do
   name <- newVName f
   tv <- newTyVar
   let env' = TypeEnv $ env <> [(name, Scheme [] tv)]
       e = splat pure (const $ pure name) x
-  (s1, t1) <- ti f env' e
+  (s1, t1) <- infer f env' e
   pure (s1, TArr (apply s1 tv) t1)
-ti f env exp@(e1 :@ e2) =
+
+infer f env exp@(e1 :@ e2) =
   do
     tv <- newTyVar
-    (s1, t1) <- ti f env e1
-    (s2, t2) <- ti f (apply s1 env) e2
-    s3 <- mgu (apply s2 t1) (TArr t2 tv)
+    (s1, t1) <- infer f env e1
+    (s2, t2) <- infer f (apply s1 env) e2
+    s3 <- unify (apply s2 t1) (TArr t2 tv)
     pure (composeSubst s3 $ composeSubst s2 s1, apply s3 tv)
   `catchE` \e -> throwE $
     mconcat
@@ -231,12 +239,15 @@ ti f env exp@(e1 :@ e2) =
 
 typeInference :: Map VName Scheme -> Exp VName -> TI Type
 typeInference env e = do
-  (s, t) <- ti (VName . ("!!!v" <>) . show) (TypeEnv env) e
+  (s, t) <- infer (VName . ("!!!v" <>) . show) (TypeEnv env) e
   pure $ apply s t
 
 pattern (:->) :: Type -> Type -> Type
 pattern (:->) a b = TArr a b
 infixr 1 :->
+
+pattern TBool :: Type
+pattern TBool = TSum TUnit TUnit
 
 class Types a where
   free :: a -> Set TName
@@ -352,5 +363,8 @@ stdLib = fmap (generalize $ TypeEnv @VName mempty)
   , ("unit", TUnit)
   , ("==", "a" :-> "a" :-> TBool)
   , (",", "a" :-> "b" :-> TProd "a" "b")
+  , ("bool", "a" :-> "a" :-> TBool :-> "a")
+  , ("id", "a" :-> "a")
   ]
+
 
