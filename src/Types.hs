@@ -23,6 +23,7 @@ import           Control.Arrow (first, second)
 import           Control.Monad.State
 import           Control.Monad.Trans.Except
 import           Data.Eq.Deriving (deriveEq1)
+import           Data.List (nub)
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Monoid ((<>))
@@ -115,7 +116,10 @@ instance Show TName where
 instance Show VName where
   show = unVName
 
-data Scheme = Scheme [TName] Type
+data Scheme = Scheme
+  { schemeVars :: [TName]
+  , schemeType :: Type
+  }
   deriving (Eq, Ord, Show)
 
 data Lit
@@ -199,9 +203,7 @@ ti f env (Let bs b) = do
   let t' = generalize (apply s1 env) t1
       env' = TypeEnv $ M.insert name t' $ unTypeEnv env
   (s2, t2) <- ti f (apply s1 env') e2
-  pure $ (composeSubst s1 s2, t2)
-  -- (s1, t1) <- ti env e1
-
+  pure (composeSubst s1 s2, t2)
 ti _ _ (Lit (LInt _))  = pure (mempty, TInt)
 ti _ _ (Lit (LBool _)) = pure (mempty, TBool)
 ti f (TypeEnv env) (Lam x) = do
@@ -283,6 +285,27 @@ generalize :: TypeEnv a -> Type -> Scheme
 generalize env t =
   Scheme (S.toList $ free t S.\\ free env) t
 
+normalizeType :: Type -> Type
+normalizeType = schemeType . normalize . Scheme mempty
+
+normalize :: Scheme -> Scheme
+normalize (Scheme _ body) = Scheme (map snd ord) (normtype body)
+  where
+    ord = zip (nub $ S.toList $ free body) (fmap TName letters)
+
+    normtype (TArr a b)  = TArr (normtype a) (normtype b)
+    normtype TInt        = TInt
+    normtype TBool       = TBool
+    normtype TUnit       = TUnit
+    normtype TVoid       = TVoid
+    normtype (TProd a b) = TProd (normtype a) (normtype b)
+    normtype (TSum a b)  = TSum (normtype a) (normtype b)
+    normtype (TVar a)    =
+      case Prelude.lookup a ord of
+        Just x -> TVar x
+        Nothing -> error "type variable not in signature"
+
+
 
 -- freeVars :: Ord a => Exp a -> Set a
 -- freeVars (V a)    = [a]
@@ -310,7 +333,7 @@ test :: Exp VName -> IO ()
 test x =
   case runTI $ typeInference stdLib x of
     Left e -> putStrLn e
-    Right t -> putStrLn $ show t
+    Right t -> putStrLn $ show $ normalizeType t
 
 main :: IO ()
 main = do
@@ -327,6 +350,7 @@ stdLib = fmap (generalize $ TypeEnv @VName mempty)
   , ("proj", ("a" :-> "c") :-> ("b" :-> "c") :-> TSum "a" "b" :-> "c")
   , (".", ("b" :-> "c") :-> ("a" :-> "b") :-> "a" :-> "c")
   , ("unit", TUnit)
+  , ("==", "a" :-> "a" :-> TBool)
   , (",", "a" :-> "b" :-> TProd "a" "b")
   ]
 
