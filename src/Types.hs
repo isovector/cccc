@@ -18,10 +18,10 @@
 
 module Types where
 
-import           Control.Lens ((<&>))
 import           Bound hiding (instantiate)
 import           Bound.Scope hiding (instantiate)
 import           Control.Arrow (first, second)
+import           Control.Lens ((<&>))
 import           Control.Monad.State
 import           Control.Monad.Trans.Except
 import           Data.Eq.Deriving (deriveEq1)
@@ -196,12 +196,12 @@ varBind u t
   | otherwise
     = pure $ Subst [(u, t)]
 
-infer :: (Show a, Ord a) => (Int -> a) -> TypeEnv a -> Exp a -> TI (Subst, Type)
+infer :: (Show a, Ord a) => (Int -> a) -> SymTable a -> Exp a -> TI (Subst, Type)
 infer f env (Assert e t) = do
   (s1, t1) <- infer f env e
   s2 <- unify t t1
   pure (s1 <> s2, t)
-infer _ (TypeEnv env) (V a) =
+infer _ (SymTable env) (V a) =
   case M.lookup a env of
     Nothing -> throwE $ "unbound variable: '" <> show a <> "'"
     Just sigma -> (,) <$> pure mempty <*> instantiate sigma
@@ -211,15 +211,15 @@ infer f env (Let bs b) = do
       e2 = splat pure (const $ pure name) b
   (s1, t1) <- infer f env e1
   let t' = generalize (apply s1 env) t1
-      env' = TypeEnv $ M.insert name t' $ unTypeEnv env
+      env' = SymTable $ M.insert name t' $ unSymTable env
   (s2, t2) <- infer f (apply s1 env') e2
   pure (s1 <> s2, t2)
 infer _ _ (Lit (LInt _))  = pure (mempty, TInt)
 infer _ _ (Lit (LBool _)) = pure (mempty, TBool)
-infer f (TypeEnv env) (Lam x) = do
+infer f (SymTable env) (Lam x) = do
   name <- newVName f
   tv <- newTyVar
-  let env' = TypeEnv $ env <> [(name, Scheme [] tv)]
+  let env' = SymTable $ env <> [(name, Scheme [] tv)]
       e = splat pure (const $ pure name) x
   (s1, t1) <- infer f env' e
   pure (s1, TArr (apply s1 tv) t1)
@@ -237,12 +237,12 @@ infer f env exp@(e1 :@ e2) =
       , "\n in "
       , show exp
       , "\n\ncontext: \n"
-      , foldMap ((<> "\n") . show) . M.assocs $ unTypeEnv env
+      , foldMap ((<> "\n") . show) . M.assocs $ unSymTable env
       ]
 
 typeInference :: Map VName Scheme -> Exp VName -> TI Type
 typeInference env e = do
-  (s, t) <- infer (VName . ("!!!v" <>) . show) (TypeEnv env) e
+  (s, t) <- infer (VName . ("!!!v" <>) . show) (SymTable env) e
   pure $ apply s t
 
 pattern (:->) :: Type -> Type -> Type
@@ -301,15 +301,15 @@ instance Monoid Subst where
   mappend s1 (Subst s2) =
     Subst $ fmap (apply s1) s2 <> unSubst s1
 
-newtype TypeEnv a = TypeEnv
-  { unTypeEnv :: Map a Scheme
+newtype SymTable a = SymTable
+  { unSymTable :: Map a Scheme
   }
 
-instance Types (TypeEnv a) where
-  free = mconcat . fmap free . M.elems . unTypeEnv
-  apply s = TypeEnv . fmap (apply s) . unTypeEnv
+instance Types (SymTable a) where
+  free = mconcat . fmap free . M.elems . unSymTable
+  apply s = SymTable . fmap (apply s) . unSymTable
 
-generalize :: TypeEnv a -> Type -> Scheme
+generalize :: SymTable a -> Type -> Scheme
 generalize env t =
   Scheme (S.toList $ free t S.\\ free env) t
 
@@ -370,7 +370,7 @@ main = do
 
 
 stdLib :: Map VName Scheme
-stdLib = fmap (generalize $ TypeEnv @VName mempty)
+stdLib = fmap (generalize $ SymTable @VName mempty)
   [ ("fst", TProd "a" "b" :-> "a")
   , ("snd", TProd "a" "b" :-> "b")
   , ("inl", "a" :-> TSum "a" "b")
