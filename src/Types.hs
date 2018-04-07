@@ -24,6 +24,7 @@ import           Control.Arrow (first, second)
 import           Control.Lens ((<&>))
 import           Control.Monad.State
 import           Control.Monad.Trans.Except
+import           Data.Char (isUpper)
 import           Data.Eq.Deriving (deriveEq1)
 import           Data.List (nub)
 import           Data.Map (Map)
@@ -75,13 +76,19 @@ data Exp a
 instance IsString a => IsString (Exp a) where
   fromString = V . fromString
 
+pattern TProd :: Type -> Type -> Type
+pattern TProd a b = TCon "*" :@@ a :@@ b
+
+pattern TSum :: Type -> Type -> Type
+pattern TSum a b = TCon "+" :@@ a :@@ b
+
+pattern TArr :: Type -> Type -> Type
+pattern TArr a b = TCon "->" :@@ a :@@ b
+
 infixl 9 :@@
 data Type
   = TVar TName
   | TInt
-  | TArr Type Type
-  | TProd Type Type
-  | TSum Type Type
   | TUnit
   | TVoid
   | TCon TName
@@ -89,18 +96,12 @@ data Type
   deriving (Eq, Ord)
 
 instance IsString Type where
-  fromString = TVar . fromString
+  fromString x =
+    case isUpper $ head x of
+      True  -> TCon $ fromString x
+      False -> TVar $ fromString x
 
 instance Show Type where
-  showsPrec _ (TVar n)    = showString $ unTName n
-  showsPrec _ (TCon n)    = showString $ unTName n
-  showsPrec x (a :@@ b)   = showParen (x > 9)
-    $ showsPrec 9 a
-    . showString " "
-    . showsPrec 10 b
-  showsPrec _ TInt        = showString "Int"
-  showsPrec _ TUnit       = showString "1"
-  showsPrec _ TVoid       = showString "0"
   showsPrec x (TArr a b)  = showParen (x > 0)
     $ showsPrec 1 a
     . showString " -> "
@@ -114,6 +115,15 @@ instance Show Type where
     $ showsPrec 5 a
     . showString " + "
     . showsPrec 5 b
+  showsPrec _ (TVar n)    = showString $ unTName n
+  showsPrec _ (TCon n)    = showString $ unTName n
+  showsPrec x (a :@@ b)   = showParen (x > 9)
+    $ showsPrec 9 a
+    . showString " "
+    . showsPrec 10 b
+  showsPrec _ TInt        = showString "Int"
+  showsPrec _ TUnit       = showString "1"
+  showsPrec _ TVoid       = showString "0"
 
 newtype TName = TName { unTName :: String }
   deriving (Eq, Ord, IsString)
@@ -136,7 +146,7 @@ data Scheme = Scheme
 data Lit
   = LInt Int
   | LBool Bool
-  deriving (Eq, Ord, Show)
+  -- | LPair (Exp VName) (Exp VName)
 
 instance Applicative Exp where
   pure  = V
@@ -155,6 +165,8 @@ instance Monad Exp where
 deriveEq1 ''Exp
 deriveShow1 ''Exp
 
+deriving instance Eq Lit
+deriving instance Show Lit
 deriving instance Eq a   => Eq (Exp a)
 deriving instance Show a => Show (Exp a)
 
@@ -165,18 +177,6 @@ instantiate (Scheme vars t) = do
   pure $ apply (Subst $ M.fromList (zip vars nvars)) t
 
 unify :: Type -> Type -> TI Subst
-unify (TArr l r) (TArr l' r') = do
-  s1 <- unify l l'
-  s2 <- unify (apply s1 r) (apply s1 r')
-  pure $ s1 <> s2
-unify (TProd l r) (TProd l' r') = do
-  s1 <- unify l l'
-  s2 <- unify (apply s1 r) (apply s1 r')
-  pure $ s1 <> s2
-unify (TSum l r) (TSum l' r') = do
-  s1 <- unify l l'
-  s2 <- unify (apply s1 r) (apply s1 r')
-  pure $ s1 <> s2
 unify (l :@@ r) (l' :@@ r') = do
   s1 <- unify l l'
   s2 <- unify (apply s1 r) (apply s1 r')
@@ -294,15 +294,9 @@ instance Types Type where
   free TBool       = []
   free TUnit       = []
   free TVoid       = []
-  free (TArr a b)  = free a <> free b
-  free (TProd a b) = free a <> free b
-  free (TSum a b)  = free a <> free b
   free (a :@@ b)   = free a <> free b
 
   apply s (TVar n)    = maybe (TVar n) id $ M.lookup n $ unSubst s
-  apply s (TArr a b)  = TArr (apply s a) (apply s b)
-  apply s (TProd a b) = TProd (apply s a) (apply s b)
-  apply s (TSum a b)  = TSum (apply s a) (apply s b)
   apply _ (TCon n)    = TCon n
   apply s (a :@@ b)   = apply s a :@@ apply s b
   apply _ TInt        = TInt
@@ -346,15 +340,12 @@ normalize (Scheme _ body) = Scheme (map snd ord) (normtype body)
   where
     ord = zip (nub $ S.toList $ free body) (fmap TName letters)
 
-    normtype (TArr a b)  = TArr (normtype a) (normtype b)
     normtype (TCon a)    = TCon a
     normtype (a :@@ b)   = normtype a :@@ normtype b
     normtype TInt        = TInt
     normtype TBool       = TBool
     normtype TUnit       = TUnit
     normtype TVoid       = TVoid
-    normtype (TProd a b) = TProd (normtype a) (normtype b)
-    normtype (TSum a b)  = TSum (normtype a) (normtype b)
     normtype (TVar a)    =
       case Prelude.lookup a ord of
         Just x -> TVar x
@@ -397,7 +388,10 @@ main = do
 
 
 stdLib :: Map VName Scheme
-stdLib = fmap (generalize $ SymTable @VName mempty)
+stdLib = fmap (generalize $ SymTable @VName mempty) stdLib'
+
+stdLib' :: Map VName Type
+stdLib' =
   [ ("fst", TProd "a" "b" :-> "a")
   , ("snd", TProd "a" "b" :-> "b")
   , ("inl", "a" :-> TSum "a" "b")
@@ -409,6 +403,7 @@ stdLib = fmap (generalize $ SymTable @VName mempty)
   , (",", "a" :-> "b" :-> TProd "a" "b")
   , ("bool", "a" :-> "a" :-> TBool :-> "a")
   , ("id", "a" :-> "a")
+  , ("ccc", ("a" :-> "b") :-> "k" :@@ "a" :@@ "b")
   ]
 
 
