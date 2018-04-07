@@ -18,7 +18,6 @@
 
 module Types where
 
-import Debug.Trace (trace)
 import           Bound hiding (instantiate)
 import           Bound.Scope hiding (instantiate)
 import           Control.Arrow (first, second)
@@ -35,6 +34,7 @@ import qualified Data.Set as S
 import           GHC.Exts (IsString (..))
 import           Prelude hiding (exp)
 import           Text.Show.Deriving (deriveShow1)
+
 
 type TI = ExceptT String (State (Int, Int))
 
@@ -75,6 +75,7 @@ data Exp a
 instance IsString a => IsString (Exp a) where
   fromString = V . fromString
 
+infixl 9 :@@
 data Type
   = TVar TName
   | TInt
@@ -83,6 +84,8 @@ data Type
   | TSum Type Type
   | TUnit
   | TVoid
+  | TCon TName
+  | Type :@@ Type
   deriving (Eq, Ord)
 
 instance IsString Type where
@@ -90,6 +93,11 @@ instance IsString Type where
 
 instance Show Type where
   showsPrec _ (TVar n)    = showString $ unTName n
+  showsPrec _ (TCon n)    = showString $ unTName n
+  showsPrec x (a :@@ b)   = showParen (x > 9)
+    $ showsPrec 9 a
+    . showString " "
+    . showsPrec 10 b
   showsPrec _ TInt        = showString "Int"
   showsPrec _ TUnit       = showString "1"
   showsPrec _ TVoid       = showString "0"
@@ -169,6 +177,12 @@ unify (TSum l r) (TSum l' r') = do
   s1 <- unify l l'
   s2 <- unify (apply s1 r) (apply s1 r')
   pure $ s1 <> s2
+unify (l :@@ r) (l' :@@ r') = do
+  s1 <- unify l l'
+  s2 <- unify (apply s1 r) (apply s1 r')
+  pure $ s1 <> s2
+unify (TCon a) (TCon b)
+  | a == b  = pure mempty
 unify (TVar u) t  = varBind u t
 unify t (TVar u)  = varBind u t
 unify TInt TInt   = pure mempty
@@ -183,10 +197,8 @@ unify t1 t2       = throwE $
 
 varBind :: TName -> Type -> TI Subst
 varBind u t
-  | t == TVar u
-    = pure mempty
-  | S.member u (free t)
-    = throwE
+  | t == TVar u = pure mempty
+  | S.member u (free t) = throwE
       $ mconcat
         [ "occurs check: '"
         , show u
@@ -194,8 +206,7 @@ varBind u t
         , show t
         , "'"
         ]
-  | otherwise
-    = pure $ Subst [(u, t)]
+  | otherwise = pure $ Subst [(u, t)]
 
 
 splatter :: Monad f => c -> Scope b f c -> f c
@@ -223,7 +234,7 @@ infer f env (Let bs b) = do
   let t' = generalize (apply s1 env) t1
       env' = SymTable $ M.insert name t' $ unSymTable env
   (s2, t2) <- infer f (apply s1 env') e2
-  pure (flatten $ s1 <> s2, t2)
+  pure (s1 <> s2, t2)
 infer _ _ (Lit (LInt _))  = pure (mempty, TInt)
 infer _ _ (Lit (LBool _)) = pure (mempty, TBool)
 infer f (SymTable env) (Lam x) = do
@@ -232,7 +243,7 @@ infer f (SymTable env) (Lam x) = do
   let env' = SymTable $ env <> [(name, Scheme [] tv)]
       e = splatter name x
   (s1, t1) <- infer f env' e
-  pure (flatten $ s1, TArr (apply s1 tv) t1)
+  pure (s1, TArr (apply s1 tv) t1)
 
 infer f env exp@(e1 :@ e2) =
   do
@@ -240,7 +251,7 @@ infer f env exp@(e1 :@ e2) =
     (s1, t1) <- infer f env e1
     (s2, t2) <- infer f (apply s1 env) e2
     s3 <- unify (apply s2 t1) (TArr t2 tv)
-    pure (flatten $ s1 <> s2 <> s3, apply s3 tv)
+    pure (s1 <> s2 <> s3, apply s3 tv)
   `catchE` \e -> throwE $
     mconcat
       [ e
@@ -278,6 +289,7 @@ flatten (Subst x) = fix $ \(Subst final) ->
 
 instance Types Type where
   free (TVar a)    = [a]
+  free (TCon _)    = [] -- ?
   free TInt        = []
   free TBool       = []
   free TUnit       = []
@@ -285,11 +297,14 @@ instance Types Type where
   free (TArr a b)  = free a <> free b
   free (TProd a b) = free a <> free b
   free (TSum a b)  = free a <> free b
+  free (a :@@ b)   = free a <> free b
 
   apply s (TVar n)    = maybe (TVar n) id $ M.lookup n $ unSubst s
   apply s (TArr a b)  = TArr (apply s a) (apply s b)
   apply s (TProd a b) = TProd (apply s a) (apply s b)
   apply s (TSum a b)  = TSum (apply s a) (apply s b)
+  apply _ (TCon n)    = TCon n
+  apply s (a :@@ b)   = apply s a :@@ apply s b
   apply _ TInt        = TInt
   apply _ TUnit       = TUnit
   apply _ TBool       = TBool
@@ -332,6 +347,8 @@ normalize (Scheme _ body) = Scheme (map snd ord) (normtype body)
     ord = zip (nub $ S.toList $ free body) (fmap TName letters)
 
     normtype (TArr a b)  = TArr (normtype a) (normtype b)
+    normtype (TCon a)    = TCon a
+    normtype (a :@@ b)   = normtype a :@@ normtype b
     normtype TInt        = TInt
     normtype TBool       = TBool
     normtype TUnit       = TUnit
