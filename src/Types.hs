@@ -18,6 +18,7 @@
 
 module Types where
 
+import Data.Bool (bool)
 import           Bound hiding (instantiate)
 import           Bound.Scope hiding (instantiate)
 import           Control.Arrow (first, second)
@@ -66,7 +67,11 @@ type Name = String
 infixl 9 :@
 data Exp a
   = V a
-  | Lit Lit
+  | LInt Int
+  | LBool Bool
+  | LUnit
+  | LProd (Exp a) (Exp a)
+  | LInj Bool (Exp a)
   | Exp a :@ Exp a
   | Lam (Scope () Exp a)
   | Let (Scope () Exp a) (Scope () Exp a)
@@ -143,11 +148,6 @@ data Scheme = Scheme
   }
   deriving (Eq, Ord, Show)
 
-data Lit
-  = LInt Int
-  | LBool Bool
-  -- | LPair (Exp VName) (Exp VName)
-
 instance Applicative Exp where
   pure  = V
   (<*>) = ap
@@ -155,7 +155,11 @@ instance Applicative Exp where
 instance Monad Exp where
   return       = pure
   V a        >>= f = f a
-  Lit x      >>= _ = Lit x
+  LInt i     >>= _ = LInt i
+  LBool i    >>= _ = LBool i
+  LUnit      >>= _ = LUnit
+  LProd a b  >>= f = LProd (a >>= f) (b >>= f)
+  LInj x a   >>= f = LInj x (a >>= f)
   (x :@ y)   >>= f = (x >>= f) :@ (y >>= f)
   Lam e      >>= f = Lam (e >>>= f)
   Let bs b   >>= f = Let (bs >>>= f) (b >>>= f)
@@ -165,8 +169,6 @@ instance Monad Exp where
 deriveEq1 ''Exp
 deriveShow1 ''Exp
 
-deriving instance Eq Lit
-deriving instance Show Lit
 deriving instance Eq a   => Eq (Exp a)
 deriving instance Show a => Show (Exp a)
 
@@ -210,13 +212,12 @@ varBind u t
 
 
 splatter :: Monad f => c -> Scope b f c -> f c
-splatter name = splat pure (const $ pure name)
+splatter = splat pure . const . pure
 
 infer
-    :: (Show a, Ord a)
-    => (Int -> a)
-    -> SymTable a
-    -> Exp a
+    :: (Int -> VName)
+    -> SymTable VName
+    -> Exp VName
     -> TI (Subst, Type)
 infer f env (Assert e t) = do
   (s1, t1) <- infer f env e
@@ -235,8 +236,23 @@ infer f env (Let bs b) = do
       env' = SymTable $ M.insert name t' $ unSymTable env
   (s2, t2) <- infer f (apply s1 env') e2
   pure (s1 <> s2, t2)
-infer _ _ (Lit (LInt _))  = pure (mempty, TInt)
-infer _ _ (Lit (LBool _)) = pure (mempty, TBool)
+infer _ _ (LInt _)  = pure (mempty, TInt)
+infer _ _ (LBool _) = pure (mempty, TBool)
+infer _ _ (LUnit)   = pure (mempty, TUnit)
+infer f env (LInj which a) = do
+  t <- newTyVar
+  (s1, t1) <- infer f env a
+  t2 <- newTyVar
+  s2 <- unify t . apply s1 $ bool id flip which TProd t1 t2
+  pure (s1 <> s2 , t)
+infer f env (LProd a b) = do
+  t <- newTyVar
+  (s1, t1) <- infer f env a
+  -- TODO(sandy): maybe too many applys? it seems to work without
+  (s2, t2) <- infer f (apply s1 env) b
+  s3 <- unify t . apply (s1 <> s2) $ TProd t1 t2
+  pure (s1 <> s2 <> s3, t)
+
 infer f (SymTable env) (Lam x) = do
   name <- newVName f
   tv <- newTyVar
@@ -352,27 +368,24 @@ normalize (Scheme _ body) = Scheme (map snd ord) (normtype body)
         Nothing -> error "type variable not in signature"
 
 
-
--- freeVars :: Ord a => Exp a -> Set a
--- freeVars (V a)    = [a]
--- freeVars (Lit _)  = []
--- freeVars (a :@ b) = freeVars a <> freeVars b
--- freeVars (Lam x)  = S.fromList $ foldMapScope (const []) pure x
-
-
 lam :: Eq a => a -> Exp a -> Exp a
 lam x e = Lam (abstract1 x e)
+
 
 let_ :: Eq a => a -> Exp a -> Exp a -> Exp a
 let_ x v e = Let (abstract1 x v) (abstract1 x e)
 
 
-whnf :: Exp a -> Exp a
-whnf (f :@ a) =
-  case whnf f of
-    Lam b -> whnf (instantiate1 a b)
+whnf :: Map VName (Exp VName) -> Exp VName -> Exp VName
+whnf std (V name) =
+  case M.lookup name std of
+    Just x -> x
+    Nothing -> V name
+whnf std (f :@ a) =
+  case whnf std f of
+    Lam b -> whnf std (instantiate1 a b)
     f' -> f' :@ a
-whnf e = e
+whnf _ e = e
 
 
 test :: Exp VName -> IO ()
@@ -381,29 +394,60 @@ test x =
     Left e -> putStrLn e
     Right t -> putStrLn $ show $ normalizeType t
 
-main :: IO ()
-main = do
-  print $ whnf $ lam 'x' (V 'x' :@ V 'x')
-              :@ lam 'x' (V 'x' :@ V 'x')
-
 
 stdLib :: Map VName Scheme
-stdLib = fmap (generalize $ SymTable @VName mempty) stdLib'
+stdLib = fmap (generalize $ SymTable @VName mempty) $ fmap fst stdLib'
 
-stdLib' :: Map VName Type
+stdLib' :: Map VName (Type, Exp VName)
 stdLib' =
-  [ ("fst", TProd "a" "b" :-> "a")
-  , ("snd", TProd "a" "b" :-> "b")
-  , ("inl", "a" :-> TSum "a" "b")
-  , ("inr", "b" :-> TSum "a" "b")
-  , ("proj", ("a" :-> "c") :-> ("b" :-> "c") :-> TSum "a" "b" :-> "c")
-  , (".", ("b" :-> "c") :-> ("a" :-> "b") :-> "a" :-> "c")
-  , ("unit", TUnit)
-  , ("==", "a" :-> "a" :-> TBool)
-  , (",", "a" :-> "b" :-> TProd "a" "b")
-  , ("bool", "a" :-> "a" :-> TBool :-> "a")
-  , ("id", "a" :-> "a")
-  , ("ccc", ("a" :-> "b") :-> "k" :@@ "a" :@@ "b")
+  [ ("fst",
+      ( TProd "a" "b" :-> "a"
+      , undefined
+      ))
+  , ("snd",
+      ( TProd "a" "b" :-> "b"
+      , undefined
+      ))
+  , ("inl",
+      ( "a" :-> TSum "a" "b"
+      , lam "x" $ LInj False "x"
+      ))
+  , ("inr",
+      ( "b" :-> TSum "a" "b"
+      , lam "x" $ LInj True "x"
+      ))
+  , ("proj",
+      ( ("a" :-> "c") :-> ("b" :-> "c") :-> TSum "a" "b" :-> "c"
+      , undefined
+      ))
+  , (".",
+      ( ("b" :-> "c") :-> ("a" :-> "b") :-> "a" :-> "c"
+      , lam "g" . lam "f" . lam "x" $ "g" :@ ("f" :@ "x")
+      ))
+  , ("unit",
+      ( TUnit
+      , LUnit
+      ))
+  , ("==",
+      ( "a" :-> "a" :-> TBool
+      , undefined
+      ))
+  , (",",
+      ( "a" :-> "b" :-> TProd "a" "b"
+      , lam "a" $ lam "b" $ LProd "a" "b"
+      ))
+  , ("bool",
+      ( "a" :-> "a" :-> TBool :-> "a"
+      , undefined
+      ))
+  , ("id",
+      ( "a" :-> "a"
+      , lam "x" "x"
+      ))
+  , ("ccc",
+      ( ("a" :-> "b") :-> "k" :@@ "a" :@@ "b"
+      , undefined
+      ))
   ]
 
 
