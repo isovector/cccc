@@ -5,7 +5,7 @@
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE OverloadedLists            #-}
+{-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE OverloadedLists            #-}
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE StandaloneDeriving         #-}
@@ -17,12 +17,11 @@
 
 module Types where
 
-import Control.Arrow (first, second)
-import Prelude hiding (exp)
-import Control.Monad.Trans.Except
-import Control.Monad.State
 import           Bound hiding (instantiate)
 import           Bound.Scope hiding (instantiate)
+import           Control.Arrow (first, second)
+import           Control.Monad.State
+import           Control.Monad.Trans.Except
 import           Data.Eq.Deriving (deriveEq1)
 import           Data.Map (Map)
 import qualified Data.Map as M
@@ -30,6 +29,7 @@ import           Data.Monoid ((<>))
 import           Data.Set (Set)
 import qualified Data.Set as S
 import           GHC.Exts (IsString (..))
+import           Prelude hiding (exp)
 import           Text.Show.Deriving (deriveShow1)
 
 type TI = ExceptT String (State (Int, Int))
@@ -85,14 +85,23 @@ instance IsString Type where
   fromString = TVar . fromString
 
 instance Show Type where
-  show (TVar x)    = show x
-  show TInt        = "Int"
-  show TBool       = "Bool"
-  show TUnit       = "1"
-  show TVoid       = "0"
-  show (TArr a b)  = "(" <> show a <> " -> " <> show b <> ")"
-  show (TProd a b) = "(" <> show a <> " * " <> show b <> ")"
-  show (TSum a b)  = "(" <> show a <> " + " <> show b <> ")"
+  showsPrec _ (TVar n)    = showString $ unTName n
+  showsPrec _ TInt        = showString $ "Int"
+  showsPrec _ TBool       = showString $ "Bool"
+  showsPrec _ TUnit       = showString $ "1"
+  showsPrec _ TVoid       = showString $ "0"
+  showsPrec x (TArr a b)  = showParen (x > 0)
+    $ showsPrec 1 a
+    . showString " -> "
+    . showsPrec 0 b
+  showsPrec x (TProd a b) = showParen (x > 3)
+    $ showsPrec 3 a
+    . showString " * "
+    . showsPrec 3 b
+  showsPrec x (TSum a b)  = showParen (x > 5)
+    $ showsPrec 5 a
+    . showString " + "
+    . showsPrec 5 b
 
 newtype TName = TName { unTName :: String }
   deriving (Eq, Ord, IsString)
@@ -223,16 +232,6 @@ typeInference env e = do
   (s, t) <- ti (VName . ("!!!v" <>) . show) (TypeEnv env) e
   pure $ apply s t
 
-stdLib :: Map VName Scheme
-stdLib = fmap (generalize $ TypeEnv @VName mempty)
-  [ ("fst", TProd "a" "b" :-> "a")
-  , ("snd", TProd "a" "b" :-> "b")
-  , ("inl", "a" :-> TSum "a" "b")
-  , ("inr", "b" :-> TSum "a" "b")
-  , (".", ("b" :-> "c") :-> ("a" :-> "b") :-> "a" :-> "c")
-  , ("unit", TUnit)
-  ]
-
 pattern (:->) :: Type -> Type -> Type
 pattern (:->) a b = TArr a b
 infixr 1 :->
@@ -317,4 +316,17 @@ main :: IO ()
 main = do
   print $ whnf $ lam 'x' (V 'x' :@ V 'x')
               :@ lam 'x' (V 'x' :@ V 'x')
+
+
+stdLib :: Map VName Scheme
+stdLib = fmap (generalize $ TypeEnv @VName mempty)
+  [ ("fst", TProd "a" "b" :-> "a")
+  , ("snd", TProd "a" "b" :-> "b")
+  , ("inl", "a" :-> TSum "a" "b")
+  , ("inr", "b" :-> TSum "a" "b")
+  , ("proj", ("a" :-> "c") :-> ("b" :-> "c") :-> TSum "a" "b" :-> "c")
+  , (".", ("b" :-> "c") :-> ("a" :-> "b") :-> "a" :-> "c")
+  , ("unit", TUnit)
+  , (",", "a" :-> "b" :-> TProd "a" "b")
+  ]
 
