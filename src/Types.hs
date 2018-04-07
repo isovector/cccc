@@ -7,8 +7,10 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedLists            #-}
 {-# LANGUAGE OverloadedLists            #-}
+{-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
 {-# OPTIONS_GHC -Wall                   #-}
@@ -27,7 +29,7 @@ import qualified Data.Map as M
 import           Data.Monoid ((<>))
 import           Data.Set (Set)
 import qualified Data.Set as S
-import           GHC.Exts (IsString)
+import           GHC.Exts (IsString (..))
 import           Text.Show.Deriving (deriveShow1)
 
 type TI = ExceptT String (State (Int, Int))
@@ -65,18 +67,32 @@ data Exp a
   | Let (Scope () Exp a) (Scope () Exp a)
   deriving (Functor, Foldable, Traversable)
 
+instance IsString a => IsString (Exp a) where
+  fromString = V . fromString
+
 data Type
   = TVar TName
   | TInt
   | TBool
   | TArr Type Type
+  | TProd Type Type
+  | TSum Type Type
+  | TUnit
+  | TVoid
   deriving (Eq, Ord)
 
+instance IsString Type where
+  fromString = TVar . fromString
+
 instance Show Type where
-  show (TVar x) = show x
-  show TInt = "Int"
-  show TBool = "Bool"
-  show (TArr a b) = show a <> " -> " <> show b
+  show (TVar x)    = show x
+  show TInt        = "Int"
+  show TBool       = "Bool"
+  show TUnit       = "1"
+  show TVoid       = "0"
+  show (TArr a b)  = "(" <> show a <> " -> " <> show b <> ")"
+  show (TProd a b) = "(" <> show a <> " * " <> show b <> ")"
+  show (TSum a b)  = "(" <> show a <> " + " <> show b <> ")"
 
 newtype TName = TName { unTName :: String }
   deriving (Eq, Ord, IsString)
@@ -128,18 +144,23 @@ mgu (TArr l r) (TArr l' r') = do
   s1 <- mgu l l'
   s2 <- mgu (apply s1 r) (apply s1 r')
   pure $ composeSubst s1 s2
+-- does this want to be the same as the arrow case?
+mgu (TProd l r) (TProd l' r') =
+  composeSubst <$> mgu l l' <*> mgu r r'
+mgu (TSum l r) (TSum l' r') = do
+  composeSubst <$> mgu l l' <*> mgu r r'
 mgu (TVar u) t  = varBind u t
 mgu t (TVar u)  = varBind u t
 mgu TInt TInt   = pure mempty
 mgu TBool TBool = pure mempty
 mgu t1 t2       = throwE $
   mconcat
-  [ "types don't unify: '"
-  , show t1
-  , "' vs '"
-  , show t2
-  , "'"
-  ]
+    [ "types don't unify: '"
+    , show t1
+    , "' vs '"
+    , show t2
+    , "'"
+    ]
 
 varBind :: TName -> Type -> TI Subst
 varBind u t | t == TVar u
@@ -194,7 +215,7 @@ ti f env exp@(e1 :@ e2) =
       , "\n in "
       , show exp
       , "\n\ncontext: \n"
-      , show $ unTypeEnv env
+      , foldMap ((<> "\n") . show) . M.assocs $ unTypeEnv env
       ]
 
 typeInference :: Map VName Scheme -> Exp VName -> TI Type
@@ -202,20 +223,42 @@ typeInference env e = do
   (s, t) <- ti (VName . ("!!!v" <>) . show) (TypeEnv env) e
   pure $ apply s t
 
+stdLib :: Map VName Scheme
+stdLib = fmap (generalize $ TypeEnv @VName mempty)
+  [ ("fst", TProd "a" "b" :-> "a")
+  , ("snd", TProd "a" "b" :-> "b")
+  , ("inl", "a" :-> TSum "a" "b")
+  , ("inr", "b" :-> TSum "a" "b")
+  , (".", ("b" :-> "c") :-> ("a" :-> "b") :-> "a" :-> "c")
+  , ("unit", TUnit)
+  ]
+
+pattern (:->) :: Type -> Type -> Type
+pattern (:->) a b = TArr a b
+infixr 1 :->
 
 class Types a where
   free :: a -> Set TName
   apply :: Map TName Type -> a -> a
 
 instance Types Type where
-  free (TVar a)   = [a]
-  free TInt       = []
-  free TBool      = []
-  free (TArr a b) = free a <> free b
+  free (TVar a)    = [a]
+  free TInt        = []
+  free TBool       = []
+  free TUnit       = []
+  free TVoid       = []
+  free (TArr a b)  = free a <> free b
+  free (TProd a b) = free a <> free b
+  free (TSum a b)  = free a <> free b
 
-  apply s (TVar n)   = maybe (TVar n) id $ M.lookup n s
-  apply s (TArr a b) = TArr (apply s a) (apply s b)
-  apply _ t          = t
+  apply s (TVar n)    = maybe (TVar n) id $ M.lookup n s
+  apply s (TArr a b)  = TArr (apply s a) (apply s b)
+  apply s (TProd a b) = TProd (apply s a) (apply s b)
+  apply s (TSum a b)  = TSum (apply s a) (apply s b)
+  apply _ TInt        = TInt
+  apply _ TUnit       = TUnit
+  apply _ TBool       = TBool
+  apply _ TVoid       = TVoid
 
 instance Types Scheme where
   free (Scheme vars t) = free t S.\\ S.fromList vars
@@ -263,6 +306,12 @@ whnf (f :@ a) =
     f' -> f' :@ a
 whnf e = e
 
+
+test :: Exp VName -> IO ()
+test x =
+  case runTI $ typeInference stdLib x of
+    Left e -> putStrLn e
+    Right t -> putStrLn $ show t
 
 main :: IO ()
 main = do
