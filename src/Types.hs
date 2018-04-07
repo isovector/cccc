@@ -18,6 +18,7 @@
 
 module Types where
 
+import Debug.Trace (trace)
 import           Bound hiding (instantiate)
 import           Bound.Scope hiding (instantiate)
 import           Control.Arrow (first, second)
@@ -196,10 +197,19 @@ varBind u t
   | otherwise
     = pure $ Subst [(u, t)]
 
-infer :: (Show a, Ord a) => (Int -> a) -> SymTable a -> Exp a -> TI (Subst, Type)
+
+splatter :: Monad f => c -> Scope b f c -> f c
+splatter name = splat pure (const $ pure name)
+
+infer
+    :: (Show a, Ord a)
+    => (Int -> a)
+    -> SymTable a
+    -> Exp a
+    -> TI (Subst, Type)
 infer f env (Assert e t) = do
   (s1, t1) <- infer f env e
-  s2 <- unify t t1
+  s2       <- unify t t1
   pure (s1 <> s2, t)
 infer _ (SymTable env) (V a) =
   case M.lookup a env of
@@ -207,22 +217,22 @@ infer _ (SymTable env) (V a) =
     Just sigma -> (,) <$> pure mempty <*> instantiate sigma
 infer f env (Let bs b) = do
   name <- newVName f
-  let e1 = splat pure (const $ pure name) bs
-      e2 = splat pure (const $ pure name) b
+  let e1 = splatter name bs
+      e2 = splatter name b
   (s1, t1) <- infer f env e1
   let t' = generalize (apply s1 env) t1
       env' = SymTable $ M.insert name t' $ unSymTable env
   (s2, t2) <- infer f (apply s1 env') e2
-  pure (s1 <> s2, t2)
+  pure (flatten $ s1 <> s2, t2)
 infer _ _ (Lit (LInt _))  = pure (mempty, TInt)
 infer _ _ (Lit (LBool _)) = pure (mempty, TBool)
 infer f (SymTable env) (Lam x) = do
   name <- newVName f
   tv <- newTyVar
   let env' = SymTable $ env <> [(name, Scheme [] tv)]
-      e = splat pure (const $ pure name) x
+      e = splatter name x
   (s1, t1) <- infer f env' e
-  pure (s1, TArr (apply s1 tv) t1)
+  pure (flatten $ s1, TArr (apply s1 tv) t1)
 
 infer f env exp@(e1 :@ e2) =
   do
@@ -230,7 +240,7 @@ infer f env exp@(e1 :@ e2) =
     (s1, t1) <- infer f env e1
     (s2, t2) <- infer f (apply s1 env) e2
     s3 <- unify (apply s2 t1) (TArr t2 tv)
-    pure (s1 <> s2 <> s3, apply s3 tv)
+    pure (flatten $ s1 <> s2 <> s3, apply s3 tv)
   `catchE` \e -> throwE $
     mconcat
       [ e
@@ -260,9 +270,9 @@ class Types a where
 flatten :: Subst -> Subst
 flatten (Subst x) = fix $ \(Subst final) ->
   Subst $ M.fromList $ M.assocs x <&> \(a, b) -> (a,) $
-    case b of
-      TVar n -> final M.! n
-      z -> z
+    apply (Subst final) $ case b of
+      TVar n -> maybe (TVar n) id $ M.lookup n final
+      z      -> z
 
 
 
