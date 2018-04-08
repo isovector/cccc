@@ -296,6 +296,8 @@ classEnv = ClassEnv
   , [] :=> IsInst "Eq" TVoid
   , [IsInst "Eq" "a", IsInst "Eq" "b"] :=> IsInst "Eq" (TProd "a" "b")
   , [IsInst "Eq" "a", IsInst "Eq" "b"] :=> IsInst "Eq" (TSum "a" "b")
+
+  , [] :=> IsInst "Category" (TCon "->")
   ]
 
 
@@ -326,7 +328,10 @@ stdLib' =
       , undefined
       ))
   , (".",
-      ( [] :=> ("b" :-> "c") :-> ("a" :-> "b") :-> "a" :-> "c"
+      ( [IsInst "Category" "k"]
+          :=> ("k" :@@ "b" :@@ "c")
+          :-> ("k" :@@ "a" :@@ "b")
+          :-> "k" :@@ "a" :@@ "c"
       , lam "g" . lam "f" . lam "x" $ "g" :@ ("f" :@ "x")
       ))
   , ("unit",
@@ -346,11 +351,12 @@ stdLib' =
       , undefined
       ))
   , ("id",
-      ( [] :=> "a" :-> "a"
+      ( [IsInst "Category" "k"] :=> "k" :@@ "a" :@@ "a"
       , lam "x" "x"
       ))
   , ("ccc",
-      ( [IsInst "Category" "k"] :=> ("a" :-> "b") :-> "k" :@@ "a" :@@ "b"
+      ( [IsInst "Category" "k"]
+          :=> ("a" :-> "b") :-> "k" :@@ "a" :@@ "b"
       , undefined
       ))
   ]

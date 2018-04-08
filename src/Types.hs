@@ -18,7 +18,7 @@ import           Data.Eq.Deriving (deriveEq1)
 import           Data.List (intercalate)
 import           Data.Map (Map)
 import qualified Data.Map as M
-import           Data.Monoid ((<>))
+import           Data.Semigroup (Semigroup (..))
 import           Data.Set (Set)
 import qualified Data.Set as S
 import           GHC.Exts (IsString (..))

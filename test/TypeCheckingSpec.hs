@@ -10,6 +10,7 @@ import Data.Monoid ((<>))
 
 fromRight (Right a) = a
 
+
 typeCheck :: Exp VName -> Qual Type -> SpecWith ()
 typeCheck e t = it (show t) $ test' e `shouldBe` Right t
 
@@ -19,10 +20,12 @@ typeError e = it ("type error: " <> show e) $ do
   let Left z = test' e
   z `shouldContain` "types don't unify"
 
+
 ambiguous :: Exp VName -> SpecWith ()
 ambiguous e = it ("ambiguous: " <> show e) $ do
   let Left z = test' e
   z `shouldContain` "is ambiguous"
+
 
 spec :: Spec
 spec = describe "type checking" $ do
