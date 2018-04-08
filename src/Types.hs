@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedLists            #-}
+{-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
@@ -14,6 +15,7 @@ import           Bound hiding (instantiate)
 import           Control.Monad.State
 import           Data.Char (isUpper)
 import           Data.Eq.Deriving (deriveEq1)
+import           Data.List (intercalate)
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Monoid ((<>))
@@ -65,11 +67,11 @@ instance Show Type where
     . showsPrec 0 b
   showsPrec _ (TSum TUnit TUnit) = showString "2"
   showsPrec x (TProd a b) = showParen (x > 3)
-    $ showsPrec 3 a
+    $ showsPrec 4 a
     . showString " * "
     . showsPrec 3 b
   showsPrec x (TSum a b)  = showParen (x > 5)
-    $ showsPrec 5 a
+    $ showsPrec 6 a
     . showString " + "
     . showsPrec 5 b
   showsPrec _ (TVar n)    = showString $ unTName n
@@ -135,6 +137,43 @@ deriving instance Eq a   => Eq (Exp a)
 deriving instance Show a => Show (Exp a)
 
 
+infixr 0 :=>
+data Qual t = (:=>)
+  { qualPreds :: [Pred]
+  , qualType  :: t
+  } deriving (Eq, Ord, Functor, Traversable, Foldable)
+
+
+instance Show t => Show (Qual t) where
+  show (a :=> b) =
+    case length a of
+      0 -> show b
+      1 -> show (head a) <> " => " <> show b
+      _ -> mconcat
+             [ "("
+             , intercalate ", " $ fmap show a
+             , ") => "
+             , show b
+             ]
+
+data Pred = IsInst
+  { predCName :: CName
+  , predInst  :: Type
+  } deriving (Eq, Ord)
+
+
+instance Show Pred where
+  show (IsInst a b) = show a <> " (" <> show b <> ")"
+
+
+newtype CName = CName { unCName :: String }
+  deriving (Eq, Ord, IsString)
+
+
+instance Show CName where
+  show = unCName
+
+
 newtype VName = VName { unVName :: String }
   deriving (Eq, Ord, IsString)
 
@@ -145,7 +184,7 @@ instance Show VName where
 
 data Scheme = Scheme
   { schemeVars :: [TName]
-  , schemeType :: Type
+  , schemeType :: Qual Type
   }
   deriving (Eq, Ord, Show)
 
@@ -178,6 +217,21 @@ instance Types Type where
   apply _ TVoid       = TVoid
 
 
+instance Types a => Types [a] where
+  free = mconcat . fmap free
+  apply s = fmap (apply s)
+
+
+instance Types a => Types (Qual a) where
+  free (a :=> b)    = free a <> free b
+  apply s (a :=> b) = apply s a :=> apply s b
+
+
+instance Types Pred where
+  free (IsInst _ a)    = free a
+  apply s (IsInst a b) = IsInst a (apply s b)
+
+
 instance Types Scheme where
   free (Scheme vars t) = free t S.\\ S.fromList vars
 
@@ -203,7 +257,7 @@ newtype SymTable a = SymTable
 
 
 instance Types (SymTable a) where
-  free = mconcat . fmap free . M.elems . unSymTable
+  free = free . M.elems . unSymTable
   apply s = SymTable . fmap (apply s) . unSymTable
 
 
