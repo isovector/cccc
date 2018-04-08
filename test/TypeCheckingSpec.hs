@@ -52,12 +52,9 @@ spec = describe "type checking" $ do
   typeCheck (lam "x" $ "==" :@ "x" :@ LInt 5) $
     [] :=> TInt :-> TBool
 
-
-  -- should not occurs check
-  -- expectationFailure $ do
-  --   let eqAxBT = TProd "a" "b" :-> TProd "a" "b" :-> TBool
-  --   typeCheck (Assert "==" eqAxBT) $
-  --     [IsInst "Eq" "x", IsInst "Eq" "y"] :=> eqAxBT
+  let eqAxBT = TProd "a" "b" :-> TProd "a" "b" :-> TBool
+  typeCheck (Assert "==" eqAxBT) $
+    [IsInst "Eq" "a", IsInst "Eq" "b"] :=> eqAxBT
 
   typeCheck "unit" $ [] :=> TUnit
   typeCheck ("inl" :@ "unit") $ [] :=> TSum TUnit "a"

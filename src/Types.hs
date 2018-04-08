@@ -13,7 +13,7 @@ module Types where
 
 import           Bound hiding (instantiate)
 import           Control.Monad.State
-import           Data.Char (isUpper)
+import           Data.Char (isLower)
 import           Data.Eq.Deriving (deriveEq1)
 import           Data.List (intercalate)
 import           Data.Map (Map)
@@ -59,9 +59,9 @@ pattern TCat k a b = k :@@ a :@@ b
 
 instance IsString Type where
   fromString x =
-    case isUpper $ head x of
-      True  -> TCon $ fromString x
-      False -> TVar $ fromString x
+    case isLower $ head x of
+      False -> TCon $ fromString x
+      True  -> TVar $ fromString x
 
 
 instance Show Type where
@@ -79,7 +79,7 @@ instance Show Type where
     . showString " + "
     . showsPrec 5 b
   showsPrec _ (TVar n)    = showString $ unTName n
-  showsPrec _ (TCon n)    = showString $ unTName n
+  showsPrec _ (TCon n)    = showString $ unTName n <> "!"
   showsPrec x (a :@@ b)   = showParen (x > 9)
     $ showsPrec 9 a
     . showString " "

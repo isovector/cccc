@@ -108,11 +108,11 @@ infer
     -> Exp VName
     -> TI (Subst, [Pred], Type)
 infer f env (Assert e t) = do
-  -- TODO(sandy): this should try to MATCH not to unify
-  -- upcasting is not currently an error :/
+  newTs <- for (S.toList $ free t) $ \z -> fmap (z,) newTyVar
+  let t' = apply (Subst $ M.fromList newTs) t
   (s1, p1, t1) <- infer f env e
-  s2       <- unify t t1
-  pure (s1 <> s2, p1, t)
+  s2           <- unify t' t1
+  pure (s1 <> s2, p1, t')
 infer _ (SymTable env) (V a) =
   case M.lookup a env of
     Nothing -> throwE $ "unbound variable: '" <> show a <> "'"
