@@ -7,7 +7,6 @@
 
 module TypeChecking where
 
--- import           Data.List (nub)
 import           Bound hiding (instantiate)
 import           Bound.Scope hiding (instantiate)
 import           Control.Applicative ((<|>))
@@ -17,6 +16,7 @@ import           Control.Monad.State
 import           Control.Monad.Trans.Except
 import           Data.Bool (bool)
 import           Data.Foldable (asum)
+import           Data.List (nub)
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Monoid ((<>))
@@ -192,33 +192,34 @@ generalize env t =
   Scheme (S.toList $ free t S.\\ free env) t
 
 
-normalizeType :: Type -> Type
-normalizeType = qualType . schemeType . normalize . Scheme mempty . ([] :=>)
+normalizeType :: Qual Type -> Qual Type
+normalizeType = schemeType . normalize . Scheme mempty
 
 
 normalize :: Scheme -> Scheme
-normalize = id --Scheme (map snd ord) (normtype body)
--- normalize (Scheme _ body) = Scheme (map snd ord) (normtype body)
---   where
---     ord = zip (nub $ S.toList $ free body) (fmap TName letters)
+normalize (Scheme _ body) = Scheme (map snd ord) (normqual body)
+  where
+    ord = zip (nub $ S.toList $ free body) (fmap TName letters)
+    normqual (xs :=> zs) =
+      fmap (\(IsInst c t) -> IsInst c $ normtype t) xs :=> normtype zs
 
---     normtype (TCon a)    = TCon a
---     normtype (a :@@ b)   = normtype a :@@ normtype b
---     normtype TInt        = TInt
---     normtype TBool       = TBool
---     normtype TUnit       = TUnit
---     normtype TVoid       = TVoid
---     normtype (TVar a)    =
---       case Prelude.lookup a ord of
---         Just x -> TVar x
---         Nothing -> error "type variable not in signature"
+    normtype (TCon a)    = TCon a
+    normtype (a :@@ b)   = normtype a :@@ normtype b
+    normtype TInt        = TInt
+    normtype TBool       = TBool
+    normtype TUnit       = TUnit
+    normtype TVoid       = TVoid
+    normtype (TVar a)    =
+      case Prelude.lookup a ord of
+        Just x -> TVar x
+        Nothing -> error "type variable not in signature"
 
 
 test :: Exp VName -> IO ()
 test x =
   case runTI $ typeInference classEnv stdLib x of
-    Left e -> putStrLn e
-    Right t -> putStrLn $ show $ t
+    Left e  -> putStrLn e
+    Right t -> putStrLn $ show $ normalizeType t
 
 
 discharge :: ClassEnv -> Pred -> TI (Subst, [Pred])
