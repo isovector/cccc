@@ -53,6 +53,10 @@ pattern TBool :: Type
 pattern TBool = TSum TUnit TUnit
 
 
+pattern TCat :: Type -> Type -> Type -> Type
+pattern TCat k a b = k :@@ a :@@ b
+
+
 instance IsString Type where
   fromString x =
     case isUpper $ head x of
@@ -265,6 +269,10 @@ newtype SymTable a = SymTable
 instance Types (SymTable a) where
   free = free . M.elems . unSymTable
   apply s = SymTable . fmap (apply s) . unSymTable
+
+
+pattern CCat :: Type -> Pred
+pattern CCat t = IsInst "Category" t
 
 
 whnf :: Map VName (Exp VName) -> Exp VName -> Exp VName

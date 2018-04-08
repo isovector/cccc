@@ -29,11 +29,12 @@ ambiguous e = it ("ambiguous: " <> show e) $ do
 
 spec :: Spec
 spec = describe "type checking" $ do
-  let idT = [] :=> "a" :-> "a"
-  typeCheck "id" idT
-  typeCheck ("id" :@ "id") idT
+  let idCT = [CCat "b"] :=> TCat "b" "a" "a"
+      idT = [] :=> "a" :-> "a"
+  typeCheck "id" idCT
+  typeCheck ("id" :@ "id") idCT
   typeCheck (lam "x" "x") idT
-  typeCheck (let_ "x" "id" "x") idT
+  typeCheck (let_ "x" "id" "x") idCT
   typeCheck (Assert "id" $ unqualType idT) idT
   typeCheck (Assert "id" $ "b" :-> "b") idT
 
@@ -48,6 +49,9 @@ spec = describe "type checking" $ do
   typeCheck (let_ "x" "==" $ Assert "x" eqIntT) $ [] :=> eqIntT
   typeCheck (let_ "x" (Assert "==" eqIntT) "x") $ [] :=> eqIntT
 
+  typeCheck (lam "x" $ "==" :@ "x" :@ LInt 5) $
+    [] :=> TInt :-> TBool
+
 
   -- should not occurs check
   -- expectationFailure $ do
@@ -60,7 +64,7 @@ spec = describe "type checking" $ do
   typeCheck (Assert ("inl" :@ "unit") TBool) $ [] :=> TBool
   typeCheck (LInt 5) $ [] :=> TInt
   typeCheck (LProd "id" "id") $
-    [] :=> TProd ("a" :-> "a") ("b" :-> "b")
+    [CCat "b", CCat "d"] :=> TProd (TCat "b" "a" "a") (TCat "d" "c" "c")
   typeCheck (LProd "==" "==") $
     [IsInst "Eq" "a", IsInst "Eq" "b"]
       :=> TProd ("a" :-> "a" :-> TBool) ("b" :-> "b" :-> TBool)

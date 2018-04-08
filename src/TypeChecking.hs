@@ -15,12 +15,12 @@ import           Control.Monad.State
 import           Control.Monad.Trans.Except
 import           Data.Bifunctor
 import           Data.Bool (bool)
-import           Data.Foldable (asum)
 import           Data.List (nub, intercalate)
 import           Data.Map (Map)
 import qualified Data.Map as M
-import           Data.Monoid ((<>))
+import           Data.Monoid ((<>), First (..))
 import qualified Data.Set as S
+import           Data.Traversable (for)
 import           Debug.Trace (trace)
 import           Prelude hiding (exp)
 import           Types
@@ -235,11 +235,10 @@ test' = second normalizeType
 
 discharge :: ClassEnv -> Pred -> TI (Subst, [Pred])
 discharge c@(ClassEnv cenv) p = do
-  x <-
-    (asum $ S.elems cenv <&> \(a :=> b) ->
-      sequence ((a), match' b p))
-    <|> pure (mempty, Nothing)
-  case sequence x of
+  x <- for (S.elems cenv) $ \(a :=> b) -> do
+    s <- (fmap (a,) <$> match' b p) <|> pure Nothing
+    pure $ First s
+  case getFirst $ mconcat x of
     Just (ps, s) ->
       fmap mconcat $ traverse (discharge c) $ apply s $ ps
     Nothing -> pure $ (mempty, pure p)
@@ -328,10 +327,10 @@ stdLib' =
       , undefined
       ))
   , (".",
-      ( [IsInst "Category" "k"]
-          :=> ("k" :@@ "b" :@@ "c")
-          :-> ("k" :@@ "a" :@@ "b")
-          :-> "k" :@@ "a" :@@ "c"
+      ( [CCat "k"]
+          :=> (TCat "k" "b" "c")
+          :-> (TCat "k" "a" "b")
+          :-> TCat "k" "a" "c"
       , lam "g" . lam "f" . lam "x" $ "g" :@ ("f" :@ "x")
       ))
   , ("unit",
@@ -351,12 +350,12 @@ stdLib' =
       , undefined
       ))
   , ("id",
-      ( [IsInst "Category" "k"] :=> "k" :@@ "a" :@@ "a"
+      ( [CCat "k"] :=> TCat "k" "a" "a"
       , lam "x" "x"
       ))
   , ("ccc",
-      ( [IsInst "Category" "k"]
-          :=> ("a" :-> "b") :-> "k" :@@ "a" :@@ "b"
+      ( [CCat "k"]
+          :=> ("a" :-> "b") :-> TCat "k" "a" "b"
       , undefined
       ))
   ]

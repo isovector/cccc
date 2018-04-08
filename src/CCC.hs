@@ -27,7 +27,7 @@ toCCC (Lam x) =
     Lam _    -> error "hmm"
     LInt i   -> "const" :@ LInt i
     LBool b  -> "const" :@ LBool b
-    LProd a b -> "," :@ (toCCC $ Lam $ Scope a) :@ (toCCC $ Lam $ Scope b)
+    LProd a b -> toCCC $ Lam $ Scope $ (V $ F ",") :@ a :@ b
     LUnit    -> "const" :@ LUnit
 toCCC x = x
 
