@@ -16,7 +16,7 @@ import           Control.Monad.State
 import           Control.Monad.Trans.Except
 import           Data.Bool (bool)
 import           Data.Foldable (asum)
-import           Data.List (nub)
+import           Data.List (nub, intercalate)
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Monoid ((<>))
@@ -122,10 +122,10 @@ infer f env (Let bs b) = do
   let e1 = splatter name bs
       e2 = splatter name b
   (s1, p1, t1) <- infer f env e1
-  let t'@(Scheme _ (ps :=> _)) = generalize (apply s1 env) $ [] :=> t1
+  let t'   = generalize (apply s1 env) $ p1 :=> t1
       env' = SymTable $ M.insert name t' $ unSymTable env
   (s2, p2, t2) <- infer f (apply s1 env') e2
-  pure (s1 <> s2, p1 <> p2 <> ps, t2)
+  pure (s1 <> s2, p2, t2)
 infer _ _ (LInt _)  = pure (mempty, mempty, TInt)
 infer _ _ (LBool _) = pure (mempty, mempty, TBool)
 infer _ _ (LUnit)   = pure (mempty, mempty, TUnit)
@@ -173,11 +173,13 @@ typeInference cenv env e = do
   (s, ps, t) <- infer (VName . ("!!!v" <>) . show) (SymTable env) e
   zs <- traverse (discharge cenv) $ apply (flatten s) ps
   let (s', ps') = mconcat zs
-  pure $ apply s' $ ps' :=> apply s t
+      (ps'' :=> t') = apply (flatten s') $ ps' :=> apply (flatten s) t
+  errorAmbiguous $ nub ps'' :=> t'
 
 
 showTrace :: Show b => b -> b
 showTrace = trace =<< show
+
 
 flatten :: Subst -> Subst
 flatten (Subst x) = fix $ \(Subst final) ->
@@ -197,9 +199,10 @@ normalizeType = schemeType . normalize . Scheme mempty
 
 
 normalize :: Scheme -> Scheme
-normalize (Scheme _ body) = Scheme (map snd ord) (normqual body)
+normalize (Scheme _ body) =
+    Scheme (fmap snd ord) $ normqual body
   where
-    ord = zip (nub $ S.toList $ free body) (fmap TName letters)
+    ord = zip (nub . S.toList $ free body) $ fmap TName letters
     normqual (xs :=> zs) =
       fmap (\(IsInst c t) -> IsInst c $ normtype t) xs :=> normtype zs
 
@@ -210,7 +213,7 @@ normalize (Scheme _ body) = Scheme (map snd ord) (normqual body)
     normtype TUnit       = TUnit
     normtype TVoid       = TVoid
     normtype (TVar a)    =
-      case Prelude.lookup a ord of
+      case lookup a ord of
         Just x -> TVar x
         Nothing -> error "type variable not in signature"
 
@@ -232,6 +235,24 @@ discharge c@(ClassEnv cenv) p = do
     Just (ps, s) ->
       fmap mconcat $ traverse (discharge c) $ apply s $ ps
     Nothing -> pure $ (mempty, pure p)
+
+
+errorAmbiguous :: Qual Type -> TI (Qual Type)
+errorAmbiguous t@(a :=> b) = do
+  let amb = S.toList $ free a S.\\ free b
+  when (amb /= mempty) . throwE $ mconcat
+    [ "the type variable"
+    , bool "" "s" $ null amb
+    , " '"
+    , intercalate "', '" $ fmap show amb
+    , "' "
+    , bool "is" "are" $ null amb
+    , " ambiguous\n"
+    , "in the type '"
+    , show t
+    , "'\n"
+    ]
+  pure t
 
 
 -- | Unlike 'unify', the order of the paremeters here matters.
