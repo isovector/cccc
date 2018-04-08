@@ -122,10 +122,10 @@ infer f env (Let bs b) = do
   let e1 = splatter name bs
       e2 = splatter name b
   (s1, p1, t1) <- infer f env e1
-  let t'   = generalize (apply s1 env) $ p1 :=> t1
+  let t'   = generalize (apply s1 env) $ apply s1 p1 :=> t1
       env' = SymTable $ M.insert name t' $ unSymTable env
   (s2, p2, t2) <- infer f (apply s1 env') e2
-  pure (s1 <> s2, p2, t2)
+  pure (s1 <> s2, p1 <> p2, t2)
 infer _ _ (LInt _)  = pure (mempty, mempty, TInt)
 infer _ _ (LBool _) = pure (mempty, mempty, TBool)
 infer _ _ (LUnit)   = pure (mempty, mempty, TUnit)
