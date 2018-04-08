@@ -2,22 +2,26 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections     #-}
 {-# LANGUAGE TypeApplications  #-}
+{-# LANGUAGE ViewPatterns      #-}
 {-# OPTIONS_GHC -Wall          #-}
 
 module TypeChecking where
 
+-- import           Data.List (nub)
 import           Bound hiding (instantiate)
 import           Bound.Scope hiding (instantiate)
+import           Control.Applicative ((<|>))
 import           Control.Arrow (first, second)
 import           Control.Lens ((<&>))
 import           Control.Monad.State
 import           Control.Monad.Trans.Except
 import           Data.Bool (bool)
--- import           Data.List (nub)
+import           Data.Foldable (asum)
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Monoid ((<>))
 import qualified Data.Set as S
+import           Debug.Trace (trace)
 import           Prelude hiding (exp)
 import           Types
 
@@ -67,6 +71,8 @@ unify (TCon a) (TCon b)
 unify (TVar u) t  = varBind u t
 unify t (TVar u)  = varBind u t
 unify TInt TInt   = pure mempty
+unify TVoid TVoid = pure mempty
+unify TUnit TUnit = pure mempty
 unify t1 t2       = throwE $
   mconcat
     [ "types don't unify: '"
@@ -162,11 +168,16 @@ infer f env exp@(e1 :@ e2) =
       ]
 
 
-typeInference :: Map VName Scheme -> Exp VName -> TI (Qual Type)
-typeInference env e = do
+typeInference :: ClassEnv -> Map VName Scheme -> Exp VName -> TI (Qual Type)
+typeInference cenv env e = do
   (s, ps, t) <- infer (VName . ("!!!v" <>) . show) (SymTable env) e
-  pure $ apply s ps :=> apply s t
+  zs <- traverse (discharge cenv) $ apply (flatten s) ps
+  let (s', ps') = mconcat zs
+  pure $ apply s' $ ps' :=> apply s t
 
+
+showTrace :: Show b => b -> b
+showTrace = trace =<< show
 
 flatten :: Subst -> Subst
 flatten (Subst x) = fix $ \(Subst final) ->
@@ -205,9 +216,57 @@ normalize = id --Scheme (map snd ord) (normtype body)
 
 test :: Exp VName -> IO ()
 test x =
-  case runTI $ typeInference stdLib x of
+  case runTI $ typeInference classEnv stdLib x of
     Left e -> putStrLn e
     Right t -> putStrLn $ show $ t
+
+
+discharge :: ClassEnv -> Pred -> TI (Subst, [Pred])
+discharge c@(ClassEnv cenv) p = do
+  x <-
+    (asum $ S.elems cenv <&> \(a :=> b) ->
+      sequence ((a), match' b p))
+    <|> pure (mempty, Nothing)
+  case sequence x of
+    Just (ps, s) ->
+      fmap mconcat $ traverse (discharge c) $ apply s $ ps
+    Nothing -> pure $ (mempty, pure p)
+
+
+-- | Unlike 'unify', the order of the paremeters here matters.
+match :: Type -> Type -> TI Subst
+match (l :@@ r) (l' :@@ r') = do
+  sl <- match l l'
+  sr <- match r r'
+  pure $ sl <> sr
+match (TVar u) t = pure $ Subst [(u, t)]
+match TInt TInt = pure mempty
+match TVoid TVoid = pure mempty
+match TUnit TUnit = pure mempty
+match (TCon tc1) (TCon tc2)
+  | tc1 == tc2 = pure mempty
+match t1 t2 = throwE $ mconcat
+  [ "types do not match: '"
+  , show t1
+  , "' vs '"
+  , show t2
+  , "'\n"
+  ]
+
+match' :: Pred -> Pred -> TI (Maybe Subst)
+match' (IsInst a b) (IsInst a' b')
+  | a /= a'   = pure Nothing
+  | otherwise = Just <$> match b b'
+
+
+classEnv :: ClassEnv
+classEnv = ClassEnv
+  [ [] :=> IsInst "Eq" TInt
+  , [] :=> IsInst "Eq" TUnit
+  , [] :=> IsInst "Eq" TVoid
+  , [IsInst "Eq" "a", IsInst "Eq" "b"] :=> IsInst "Eq" (TProd "a" "b")
+  , [IsInst "Eq" "a", IsInst "Eq" "b"] :=> IsInst "Eq" (TSum "a" "b")
+  ]
 
 
 stdLib :: Map VName Scheme
@@ -261,7 +320,7 @@ stdLib' =
       , lam "x" "x"
       ))
   , ("ccc",
-      ( [] :=> ("a" :-> "b") :-> "k" :@@ "a" :@@ "b"
+      ( [IsInst "Category" "k"] :=> ("a" :-> "b") :-> "k" :@@ "a" :@@ "b"
       , undefined
       ))
   ]

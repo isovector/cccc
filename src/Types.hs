@@ -251,9 +251,14 @@ instance Monoid Subst where
     Subst $ fmap (apply s1) s2 <> unSubst s1
 
 
+newtype ClassEnv = ClassEnv
+  { unClassEnv :: Set (Qual Pred)
+  } deriving (Eq, Ord, Show, Monoid)
+
+
 newtype SymTable a = SymTable
   { unSymTable :: Map a Scheme
-  }
+  } deriving (Eq, Ord, Show)
 
 
 instance Types (SymTable a) where
