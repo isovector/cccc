@@ -89,11 +89,23 @@ instance Show Type where
   showsPrec _ TVoid       = showString "0"
 
 
-newtype TName = TName { unTName :: String }
-  deriving (Eq, Ord, IsString)
+data TName
+  = TName      String
+  | TFreshName String
+  deriving (Eq, Ord)
+
+
+instance IsString TName where
+  fromString = TName
+
 
 instance Show TName where
   show = unTName
+
+
+unTName :: TName -> String
+unTName (TName a)      = a
+unTName (TFreshName a) = a
 
 
 infixl 9 :@

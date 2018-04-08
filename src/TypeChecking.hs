@@ -51,7 +51,7 @@ newTyVar :: TI Type
 newTyVar = do
   n <- fst <$> get
   modify $ first (+1)
-  pure . TVar . TName $ letters !! n
+  pure . TVar . TFreshName $ letters !! n
 
 
 instantiate :: Scheme -> TI (Qual Type)
@@ -108,11 +108,9 @@ infer
     -> Exp VName
     -> TI (Subst, [Pred], Type)
 infer f env (Assert e t) = do
-  newTs <- for (S.toList $ free t) $ \z -> fmap (z,) newTyVar
-  let t' = apply (Subst $ M.fromList newTs) t
   (s1, p1, t1) <- infer f env e
-  s2           <- unify t' t1
-  pure (s1 <> s2, p1, t')
+  s2           <- unify t t1
+  pure (s1 <> s2, p1, t)
 infer _ (SymTable env) (V a) =
   case M.lookup a env of
     Nothing -> throwE $ "unbound variable: '" <> show a <> "'"
@@ -216,7 +214,7 @@ normalize (Scheme _ body) =
     normtype TVoid       = TVoid
     normtype (TVar a)    =
       case lookup a ord of
-        Just x -> TVar x
+        Just x  -> TVar . TName $ unTName x
         Nothing -> error "type variable not in signature"
 
 
