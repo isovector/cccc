@@ -10,10 +10,10 @@ module TypeChecking where
 import           Bound hiding (instantiate)
 import           Bound.Scope hiding (instantiate)
 import           Control.Applicative ((<|>))
-import           Control.Arrow (first, second)
 import           Control.Lens ((<&>))
 import           Control.Monad.State
 import           Control.Monad.Trans.Except
+import           Data.Bifunctor
 import           Data.Bool (bool)
 import           Data.Foldable (asum)
 import           Data.List (nub, intercalate)
@@ -108,6 +108,8 @@ infer
     -> Exp VName
     -> TI (Subst, [Pred], Type)
 infer f env (Assert e t) = do
+  -- TODO(sandy): this should try to MATCH not to unify
+  -- upcasting is not currently an error :/
   (s1, p1, t1) <- infer f env e
   s2       <- unify t t1
   pure (s1 <> s2, p1, t)
@@ -125,7 +127,7 @@ infer f env (Let bs b) = do
   let t'   = generalize (apply s1 env) $ apply s1 p1 :=> t1
       env' = SymTable $ M.insert name t' $ unSymTable env
   (s2, p2, t2) <- infer f (apply s1 env') e2
-  pure (s1 <> s2, p1 <> p2, t2)
+  pure (s1 <> s2, apply s2 $ p2, t2)
 infer _ _ (LInt _)  = pure (mempty, mempty, TInt)
 infer _ _ (LBool _) = pure (mempty, mempty, TBool)
 infer _ _ (LUnit)   = pure (mempty, mempty, TUnit)
@@ -220,9 +222,15 @@ normalize (Scheme _ body) =
 
 test :: Exp VName -> IO ()
 test x =
-  case runTI $ typeInference classEnv stdLib x of
+  case test' x of
     Left e  -> putStrLn e
-    Right t -> putStrLn $ show $ normalizeType t
+    Right t -> putStrLn $ show t
+
+
+test' :: Exp VName -> Either String (Qual Type)
+test' = second normalizeType
+      . runTI
+      . typeInference classEnv stdLib
 
 
 discharge :: ClassEnv -> Pred -> TI (Subst, [Pred])

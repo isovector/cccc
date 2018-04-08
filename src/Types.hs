@@ -103,6 +103,7 @@ data Exp a
   | Exp a :@ Exp a
   | Lam (Scope () Exp a)
   | Let (Scope () Exp a) (Scope () Exp a)
+  -- TODO(sandy): doesn't work for polymorphic assertions (occurs checks)
   | Assert (Exp a) Type
   deriving (Functor, Foldable, Traversable)
 
@@ -139,8 +140,8 @@ deriving instance Show a => Show (Exp a)
 
 infixr 0 :=>
 data Qual t = (:=>)
-  { qualPreds :: [Pred]
-  , qualType  :: t
+  { qualPreds  :: [Pred]
+  , unqualType :: t
   } deriving (Eq, Ord, Functor, Traversable, Foldable)
 
 
