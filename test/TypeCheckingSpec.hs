@@ -21,6 +21,12 @@ typeError e = it ("type error: " <> show e) $ do
   z `shouldContain` "types don't unify"
 
 
+kindError :: Type -> SpecWith ()
+kindError t = it ("kind error: " <> show t) $ do
+  let Left z = runTI $ kind t
+  z `shouldContain` "kind mismatch"
+
+
 ambiguous :: Exp VName -> SpecWith ()
 ambiguous e = it ("ambiguous: " <> show e) $ do
   let Left z = test' e
@@ -28,45 +34,51 @@ ambiguous e = it ("ambiguous: " <> show e) $ do
 
 
 spec :: Spec
-spec = describe "type checking" $ do
-  let idCT = [CCat "b"] :=> TCat "b" "a" "a"
-      idT = [] :=> "a" :-> "a"
-  typeCheck "id" idCT
-  typeCheck ("id" :@ "id") idCT
-  typeCheck (lam "x" "x") idT
-  typeCheck (let_ "x" "id" "x") idCT
-  typeCheck (Assert "id" $ unqualType idT) idT
-  typeCheck (Assert "id" $ "b" :-> "b") idT
+spec = do
+  describe "type checking" $ do
+    let idCT = [CCat "b"] :=> TCat "b" "a" "a"
+        idT = [] :=> "a" :-> "a"
+    typeCheck "id" idCT
+    typeCheck ("id" :@ "id") idCT
+    typeCheck (lam "x" "x") idT
+    typeCheck (let_ "x" "id" "x") idCT
+    typeCheck (Assert "id" $ unqualType idT) idT
+    typeCheck (Assert "id" $ "b" :-> "b") idT
 
-  typeCheck ("." :@ "inl") $
-    [] :=> ("a" :-> "b") :-> "a" :-> TSum "b" "c"
+    typeCheck ("." :@ "inl") $
+      [] :=> ("a" :-> "b") :-> "a" :-> TSum "b" "c"
 
-  typeCheck "==" $
-    [IsInst "Eq" "a"] :=> "a" :-> "a" :-> TBool
+    typeCheck "==" $
+      [IsInst "Eq" "a"] :=> "a" :-> "a" :-> TBool
 
-  let eqIntT = TInt :-> TInt :-> TBool
-  typeCheck (Assert "==" eqIntT) $ [] :=> eqIntT
-  typeCheck (let_ "x" "==" $ Assert "x" eqIntT) $ [] :=> eqIntT
-  typeCheck (let_ "x" (Assert "==" eqIntT) "x") $ [] :=> eqIntT
+    let eqIntT = TInt :-> TInt :-> TBool
+    typeCheck (Assert "==" eqIntT) $ [] :=> eqIntT
+    typeCheck (let_ "x" "==" $ Assert "x" eqIntT) $ [] :=> eqIntT
+    typeCheck (let_ "x" (Assert "==" eqIntT) "x") $ [] :=> eqIntT
 
-  typeCheck (lam "x" $ "==" :@ "x" :@ LInt 5) $
-    [] :=> TInt :-> TBool
+    typeCheck (lam "x" $ "==" :@ "x" :@ LInt 5) $
+      [] :=> TInt :-> TBool
 
-  let eqAxBT = TProd "a" "b" :-> TProd "a" "b" :-> TBool
-  typeCheck (Assert "==" eqAxBT) $
-    [IsInst "Eq" "a", IsInst "Eq" "b"] :=> eqAxBT
+    let eqAxBT = TProd "a" "b" :-> TProd "a" "b" :-> TBool
+    typeCheck (Assert "==" eqAxBT) $
+      [IsInst "Eq" "a", IsInst "Eq" "b"] :=> eqAxBT
 
-  typeCheck "unit" $ [] :=> TUnit
-  typeCheck ("inl" :@ "unit") $ [] :=> TSum TUnit "a"
-  typeCheck (Assert ("inl" :@ "unit") TBool) $ [] :=> TBool
-  typeCheck (LInt 5) $ [] :=> TInt
-  typeCheck (LProd "id" "id") $
-    [CCat "b", CCat "d"] :=> TProd (TCat "b" "a" "a") (TCat "d" "c" "c")
-  typeCheck (LProd "==" "==") $
-    [IsInst "Eq" "a", IsInst "Eq" "b"]
-      :=> TProd ("a" :-> "a" :-> TBool) ("b" :-> "b" :-> TBool)
+    typeCheck "unit" $ [] :=> TUnit
+    typeCheck ("inl" :@ "unit") $ [] :=> TSum TUnit "a"
+    typeCheck (Assert ("inl" :@ "unit") TBool) $ [] :=> TBool
+    typeCheck (LInt 5) $ [] :=> TInt
+    typeCheck (LProd "id" "id") $
+      [CCat "b", CCat "d"] :=> TProd (TCat "b" "a" "a") (TCat "d" "c" "c")
+    typeCheck (LProd "==" "==") $
+      [IsInst "Eq" "a", IsInst "Eq" "b"]
+        :=> TProd ("a" :-> "a" :-> TBool) ("b" :-> "b" :-> TBool)
 
-  typeError $ "fst" :@ "inl"
+    typeError $ "fst" :@ "inl"
 
-  ambiguous $ "==" :@ "==" :@ "=="
+    ambiguous $ "==" :@ "==" :@ "=="
+
+  describe "kind checking" $ do
+    kindError $ TInt :@@ TBool
+    kindError $ TProdCon :@@ TProdCon
+    kindError $ TProdCon :@@ TInt :@@ TSumCon
 

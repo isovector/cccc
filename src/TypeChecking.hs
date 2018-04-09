@@ -29,6 +29,35 @@ import           Types
 type TI = ExceptT String (State (Int, Int))
 
 
+kind :: Type -> TI Kind
+kind (TVar x)  = pure $ tKind x
+kind (TCon x)  = pure $ tKind x
+kind TInt      = pure KStar
+kind TUnit     = pure KStar
+kind TVoid     = pure KStar
+kind (a :@@ b) = do
+  ka <- kind a
+  kb <- kind b
+  let kerr kk = throwE $ mconcat
+        [ "kind mismatch: '"
+        , show b
+        , " :: "
+        , show kb
+        , "' vs '"
+        , show kk
+        , "'\nwhen trying to apply '"
+        , show a
+        , " :: "
+        , show ka
+        , "'\n"
+        ]
+  case ka of
+    kal :>> kar -> do
+      when (kal /= kb) $ kerr kal
+      pure kar
+    KStar -> kerr KStar
+
+
 newVName :: (Int -> a) -> TI a
 newVName f = do
   n <- snd <$> get
@@ -47,16 +76,16 @@ runTI :: TI a -> Either String a
 runTI = flip evalState (0, 0) . runExceptT
 
 
-newTyVar :: TI Type
-newTyVar = do
+newTyVar :: Kind -> TI Type
+newTyVar k = do
   n <- fst <$> get
   modify $ first (+1)
-  pure . TVar . TFreshName $ letters !! n
+  pure . TVar . flip TFreshName k $ letters !! n
 
 
 instantiate :: Scheme -> TI (Qual Type)
 instantiate (Scheme vars t) = do
-  nvars <- traverse (const newTyVar) vars
+  nvars <- traverse newTyVar $ fmap tKind vars
   let subst = Subst $ M.fromList (zip vars nvars)
   pure $ apply subst t
 
@@ -94,8 +123,10 @@ varBind u t
         , show t
         , "'"
         ]
-  -- TODO(sandy): we could do kind checking here
-  | otherwise = pure $ Subst [(u, t)]
+  | otherwise = do
+      k <- kind t
+      when (k /= tKind u) $ throwE "kind unification fails"
+      pure $ Subst [(u, t)]
 
 
 splatter :: Monad f => c -> Scope b f c -> f c
@@ -130,13 +161,13 @@ infer _ _ (LInt _)  = pure (mempty, mempty, TInt)
 infer _ _ (LBool _) = pure (mempty, mempty, TBool)
 infer _ _ (LUnit)   = pure (mempty, mempty, TUnit)
 infer f env (LInj which a) = do
-  t <- newTyVar
+  t <- newTyVar KStar
   (s1, p1, t1) <- infer f env a
-  t2 <- newTyVar
+  t2 <- newTyVar KStar
   s2 <- unify t . apply s1 $ bool id flip which TProd t1 t2
   pure (s1 <> s2, p1, t)
 infer f env (LProd a b) = do
-  t <- newTyVar
+  t <- newTyVar KStar
   (s1, p1, t1) <- infer f env a
   -- TODO(sandy): maybe too many applys? it seems to work without
   (s2, p2, t2) <- infer f (apply s1 env) b
@@ -145,7 +176,7 @@ infer f env (LProd a b) = do
 
 infer f (SymTable env) (Lam x) = do
   name <- newVName f
-  tv <- newTyVar
+  tv <- newTyVar KStar
   let env' = SymTable $ env <> [(name, Scheme [] $ [] :=> tv)]
       e = splatter name x
   (s1, p1, t1) <- infer f env' e
@@ -153,7 +184,7 @@ infer f (SymTable env) (Lam x) = do
 
 infer f env exp@(e1 :@ e2) =
   do
-    tv <- newTyVar
+    tv <- newTyVar KStar
     (s1, p1, t1) <- infer f env e1
     (s2, p2, t2) <- infer f (apply s1 env) e2
     s3 <- unify (apply s2 t1) (TArr t2 tv)
@@ -202,7 +233,8 @@ normalize :: Scheme -> Scheme
 normalize (Scheme _ body) =
     Scheme (fmap snd ord) $ normqual body
   where
-    ord = zip (nub . S.toList $ free body) $ fmap TName letters
+    ord = zip (nub . S.toList $ free body) letters <&> \(old, l) ->
+      (old, TName l $ tKind old)
     normqual (xs :=> zs) =
       fmap (\(IsInst c t) -> IsInst c $ normtype t) xs :=> normtype zs
 
@@ -214,7 +246,7 @@ normalize (Scheme _ body) =
     normtype TVoid       = TVoid
     normtype (TVar a)    =
       case lookup a ord of
-        Just x  -> TVar . TName $ unTName x
+        Just x  -> TVar $ TName (unTName x) (tKind x)
         Nothing -> error "type variable not in signature"
 
 
@@ -294,7 +326,7 @@ classEnv = ClassEnv
   , [IsInst "Eq" "a", IsInst "Eq" "b"] :=> IsInst "Eq" (TProd "a" "b")
   , [IsInst "Eq" "a", IsInst "Eq" "b"] :=> IsInst "Eq" (TSum "a" "b")
 
-  , [] :=> IsInst "Category" (TCon "->")
+  , [] :=> IsInst "Category" TArrCon
   ]
 
 

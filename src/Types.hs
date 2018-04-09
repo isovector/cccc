@@ -29,32 +29,62 @@ import           Text.Show.Deriving (deriveShow1)
 infixl 9 :@@
 data Type
   = TVar TName
+  | TCon TName
   | TInt
   | TUnit
   | TVoid
-  | TCon TName
   | Type :@@ Type
   deriving (Eq, Ord)
 
 
-pattern TProd :: Type -> Type -> Type
-pattern TProd a b = TCon "*" :@@ a :@@ b
 
+infixr 9 :>>
+data Kind
+  = KStar
+  | Kind :>> Kind
+  deriving (Eq, Ord)
+
+
+instance Show Kind where
+  showsPrec _ KStar  = showString "*"
+  showsPrec x (a :>> b)  = showParen (x > 0)
+    $ showsPrec 1 a
+    . showString " -> "
+    . showsPrec 0 b
+
+
+pattern TK2 :: String -> Type -> Type -> Type
+pattern TK2 c a b = TVar (TName c K2) :@@ a :@@ b
+
+pattern K2 :: Kind
+pattern K2 = KStar :>> KStar :>> KStar
+
+
+pattern TProd :: Type -> Type -> Type
+pattern TProd a b = TProdCon :@@ a :@@ b
+
+pattern TProdCon :: Type
+pattern TProdCon = TCon (TName "*" K2)
 
 pattern TSum :: Type -> Type -> Type
-pattern TSum a b = TCon "+" :@@ a :@@ b
+pattern TSum a b = TSumCon :@@ a :@@ b
 
+pattern TSumCon :: Type
+pattern TSumCon = TCon (TName "+" K2)
 
 pattern TArr :: Type -> Type -> Type
-pattern TArr a b = TCon "->" :@@ a :@@ b
+pattern TArr a b = TArrCon :@@ a :@@ b
+
+pattern TArrCon :: Type
+pattern TArrCon = TCon (TName "->" K2)
 
 
 pattern TBool :: Type
 pattern TBool = TSum TUnit TUnit
 
 
-pattern TCat :: Type -> Type -> Type -> Type
-pattern TCat k a b = k :@@ a :@@ b
+pattern TCat :: String -> Type -> Type -> Type
+pattern TCat k a b = TK2 k a b
 
 
 instance IsString Type where
@@ -90,13 +120,13 @@ instance Show Type where
 
 
 data TName
-  = TName      String
-  | TFreshName String
+  = TName      String Kind
+  | TFreshName String Kind
   deriving (Eq, Ord)
 
 
 instance IsString TName where
-  fromString = TName
+  fromString = flip TName KStar
 
 
 instance Show TName where
@@ -104,8 +134,13 @@ instance Show TName where
 
 
 unTName :: TName -> String
-unTName (TName a)      = a
-unTName (TFreshName a) = a
+unTName (TName a _)      = a
+unTName (TFreshName a _) = a
+
+
+tKind :: TName -> Kind
+tKind (TName _ k)      = k
+tKind (TFreshName _ k) = k
 
 
 infixl 9 :@
@@ -283,8 +318,8 @@ instance Types (SymTable a) where
   apply s = SymTable . fmap (apply s) . unSymTable
 
 
-pattern CCat :: Type -> Pred
-pattern CCat t = IsInst "Category" t
+pattern CCat :: String -> Pred
+pattern CCat t = IsInst "Category" (TVar (TName t K2))
 
 
 whnf :: Map VName (Exp VName) -> Exp VName -> Exp VName
