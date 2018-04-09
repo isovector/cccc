@@ -2,11 +2,13 @@
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE OverloadedLists            #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TypeFamilies               #-}
 {-# OPTIONS_GHC -Wall                   #-}
 
 module Types where
@@ -103,11 +105,11 @@ instance Show Type where
   showsPrec x (TProd a b) = showParen (x > 3)
     $ showsPrec 4 a
     . showString " * "
-    . showsPrec 3 b
+    . showsPrec 4 b
   showsPrec x (TSum a b)  = showParen (x > 5)
     $ showsPrec 6 a
     . showString " + "
-    . showsPrec 5 b
+    . showsPrec 6 b
   showsPrec _ (TVar n)    = showString $ unTName n
   showsPrec _ (TCon n)    = showString $ unTName n <> "!"
   showsPrec x (a :@@ b)   = showParen (x > 9)

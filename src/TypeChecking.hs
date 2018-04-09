@@ -194,8 +194,8 @@ infer f env exp@(e1 :@ e2) =
       [ e
       , "\n in "
       , show exp
-      , "\n\ncontext: \n"
-      , foldMap ((<> "\n") . show) . M.assocs $ unSymTable env
+      -- , "\n\ncontext: \n"
+      -- , foldMap ((<> "\n") . show) . M.assocs $ unSymTable env
       ]
 
 
@@ -363,6 +363,24 @@ stdLib' =
           :-> TCat "k" "a" "c"
       , lam "g" . lam "f" . lam "x" $ "g" :@ ("f" :@ "x")
       ))
+  , ("apply",
+      ( [CCat "k"]
+          :=> (TCat "k" (TProd ("a" :-> "b") "a") "b")
+      , undefined
+      ))
+  , ("curry",
+      ( [CCat "k"]
+          :=> (TCat "k" (TProd "a" "b") "c")
+          :-> (TCat "k" "a" ("b" :-> "c"))
+      , undefined
+      ))
+  , ("fork",
+      ( [CCat "k"]
+          :=> (TCat "k" "a" "c")
+          :-> (TCat "k" "a" "d")
+          :-> (TCat "k" "a" (TProd "c" "d"))
+      , undefined
+      ))
   , ("unit",
       ( [] :=> TUnit
       , LUnit
@@ -383,9 +401,15 @@ stdLib' =
       ( [CCat "k"] :=> TCat "k" "a" "a"
       , lam "x" "x"
       ))
+  , ("const",
+      ( [CCat "k"]
+          :=> "b"
+          :-> TCat "k" "a" "b"
+      , lam "x" "x"
+      ))
   , ("ccc",
       ( [CCat "k"]
-          :=> ("a" :-> "b") :-> TCat "k" "a" "b"
+          :=> ("a" :-> "b") :-> TSum (TCat "k" "a" "b") TUnit
       , undefined
       ))
   ]
