@@ -323,6 +323,15 @@ instance Types (SymTable a) where
 pattern CCat :: String -> Pred
 pattern CCat t = IsInst "Category" (TVar (TName t K2))
 
+pattern CCart :: String -> Pred
+pattern CCart t = IsInst "Cartesian" (TVar (TName t K2))
+
+pattern CTerm :: String -> Pred
+pattern CTerm t = IsInst "Terminal" (TVar (TName t K2))
+
+pattern CClosed :: String -> Pred
+pattern CClosed t = IsInst "Closed" (TVar (TName t K2))
+
 
 whnf :: Map VName (Exp VName) -> Exp VName -> Exp VName
 whnf std (V name) =

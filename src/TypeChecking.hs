@@ -325,7 +325,10 @@ classEnv = ClassEnv
   , [IsInst "Eq" "a", IsInst "Eq" "b"] :=> IsInst "Eq" (TProd "a" "b")
   , [IsInst "Eq" "a", IsInst "Eq" "b"] :=> IsInst "Eq" (TSum "a" "b")
 
-  , [] :=> IsInst "Category" TArrCon
+  , [] :=> IsInst "Category"  TArrCon
+  , [] :=> IsInst "Cartesian" TArrCon
+  , [] :=> IsInst "Terminal"  TArrCon  -- const
+  , [] :=> IsInst "Closed"    TArrCon
   ]
 
 
