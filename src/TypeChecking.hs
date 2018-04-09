@@ -148,10 +148,9 @@ infer _ (SymTable env) (V a) =
     Just sigma -> do
       (ps :=> x) <- instantiate sigma
       pure (mempty, ps, x)
-infer f env (Let bs b) = do
+infer f env (Let e1 b) = do
   name <- newVName f
-  let e1 = splatter name bs
-      e2 = splatter name b
+  let e2 = splatter name b
   (s1, p1, t1) <- infer f env e1
   let t'   = generalize (apply s1 env) $ apply s1 p1 :=> t1
       env' = SymTable $ M.insert name t' $ unSymTable env

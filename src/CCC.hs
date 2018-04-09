@@ -3,7 +3,7 @@
 
 module CCC where
 
-import TypeChecking
+import Data.Bool (bool)
 import Types
 import Bound
 
@@ -33,14 +33,18 @@ toCCC' (Lam x) =
           , v'
           ]
         ]
-    Lam _     -> toCCC'
-               . lam "!!!z"
-               . unsafeInst1  ("snd" :@ "!!!z")
-               $ instantiate1 ("fst" :@ "!!!z") x
-    LInt i    -> pure $ "const" :@ LInt i
-    LBool b   -> pure $ "const" :@ LBool b
-    LProd a b -> toCCC' $ Lam $ Scope $ (V $ F ",") :@ a :@ b
-    LUnit     -> pure $ "const" :@ LUnit
+    Lam _      -> toCCC'
+                . lam "!!!z"
+                . unsafeInst1  ("snd" :@ "!!!z")
+                $ instantiate1 ("fst" :@ "!!!z") x
+    LInt i     -> pure $ "const" :@ LInt i
+    LBool b    -> pure $ "const" :@ LBool b
+    LProd a b  -> toCCC' . Lam . Scope $ (V $ F ",") :@ a :@ b
+    LInj a b   -> toCCC' . Lam . Scope $ (V $ F $ bool "inl" "inr" a) :@ b
+    LUnit      -> pure $ "const" :@ LUnit
+    -- TODO(sandy): is this right? it discards info
+    Assert a _ -> toCCC' . Lam $ Scope a
+    Let b e    -> toCCC' . Lam . Scope $ instantiate1 b e
 toCCC' _ = Nothing
 
 

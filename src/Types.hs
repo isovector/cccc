@@ -155,7 +155,7 @@ data Exp a
   | LInj Bool (Exp a)
   | Exp a :@ Exp a
   | Lam (Scope () Exp a)
-  | Let (Scope () Exp a) (Scope () Exp a)
+  | Let (Exp a) (Scope () Exp a)
   -- TODO(sandy): doesn't work for polymorphic assertions (occurs checks)
   | Assert (Exp a) Type
   deriving (Functor, Foldable, Traversable)
@@ -180,7 +180,7 @@ instance Monad Exp where
   LInj x a   >>= f = LInj x (a >>= f)
   (x :@ y)   >>= f = (x >>= f) :@ (y >>= f)
   Lam e      >>= f = Lam (e >>>= f)
-  Let bs b   >>= f = Let (bs >>>= f) (b >>>= f)
+  Let bs b   >>= f = Let (bs >>= f) (b >>>= f)
   Assert e t >>= f = Assert (e >>= f) t
 
 
@@ -341,5 +341,5 @@ lam x e = Lam (abstract1 x e)
 
 
 let_ :: Eq a => a -> Exp a -> Exp a -> Exp a
-let_ x v e = Let (abstract1 x v) (abstract1 x e)
+let_ x v e = Let v (abstract1 x e)
 
