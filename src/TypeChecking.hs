@@ -140,7 +140,7 @@ infer
     -> TI (Subst, [Pred], Type)
 infer f env (Assert e t) = do
   (s1, p1, t1) <- infer f env e
-  s2           <- unify t t1
+  s2           <- unify t1 t
   pure (s1 <> s2, p1, t)
 infer _ (SymTable env) (V a) =
   case M.lookup a env of
@@ -148,7 +148,7 @@ infer _ (SymTable env) (V a) =
     Just sigma -> do
       (ps :=> x) <- instantiate sigma
       pure (mempty, ps, x)
-infer f env (Let e1 b) = do
+infer f env (Let _ e1 b) = do
   name <- newVName f
   let e2 = splatter name b
   (s1, p1, t1) <- infer f env e1
@@ -173,7 +173,7 @@ infer f env (LProd a b) = do
   s3 <- unify t . apply (s1 <> s2) $ TProd t1 t2
   pure (s1 <> s2 <> s3, p1 <> p2, t)
 
-infer f (SymTable env) (Lam x) = do
+infer f (SymTable env) (Lam _ x) = do
   name <- newVName f
   tv <- newTyVar KStar
   let env' = SymTable $ env <> [(name, Scheme [] $ [] :=> tv)]
@@ -274,7 +274,7 @@ discharge c@(ClassEnv cenv) p = do
 
 
 errorAmbiguous :: Qual Type -> TI (Qual Type)
-errorAmbiguous t@(a :=> b) = do
+errorAmbiguous (t@(a :=> b)) = do
   let amb = S.toList $ free a S.\\ free b
   when (amb /= mempty) . throwE $ mconcat
     [ "the type variable"
@@ -326,6 +326,7 @@ classEnv = ClassEnv
   , [IsInst "Eq" "a", IsInst "Eq" "b"] :=> IsInst "Eq" (TSum "a" "b")
 
   , [] :=> IsInst "Category"  TArrCon
+  , [] :=> IsInst "Category"  (TCon (TName "Deriv" K2))
   , [] :=> IsInst "Cartesian" TArrCon
   , [] :=> IsInst "Terminal"  TArrCon  -- const
   , [] :=> IsInst "Closed"    TArrCon
@@ -356,6 +357,10 @@ stdLib' =
       ))
   , ("proj",
       ( [] :=> ("a" :-> "c") :-> ("b" :-> "c") :-> TSum "a" "b" :-> "c"
+      , undefined
+      ))
+  , ("fromLeft",
+      ( [] :=> TSum "a" "b" :-> "a"
       , undefined
       ))
   , (".",
@@ -412,6 +417,16 @@ stdLib' =
   , ("ccc",
       ( [CCat "k"]
           :=> ("a" :-> "b") :-> TSum (TCat "k" "a" "b") TUnit
+      , undefined
+      ))
+  , ("undefined",
+      ( [] :=> "a"
+      , undefined
+      ))
+  , ("getDerivation",
+      ( [] :=> TCon (TName "Deriv" K2) :@@ "a" :@@ "b"
+           :-> "a"
+           :-> "b"
       , undefined
       ))
   ]

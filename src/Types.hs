@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveFoldable             #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveTraversable          #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE OverloadedLists            #-}
@@ -15,7 +16,8 @@ module Types where
 
 import           Bound hiding (instantiate)
 import           Control.Monad.State
-import           Data.Char (isLower)
+import           Data.Bool (bool)
+import           Data.Char (isLower, isSymbol, isPunctuation)
 import           Data.Eq.Deriving (deriveEq1)
 import           Data.List (intercalate)
 import           Data.Map (Map)
@@ -154,8 +156,8 @@ data Exp a
   | LProd (Exp a) (Exp a)
   | LInj Bool (Exp a)
   | Exp a :@ Exp a
-  | Lam (Scope () Exp a)
-  | Let (Exp a) (Scope () Exp a)
+  | Lam VName (Scope () Exp a)
+  | Let VName (Exp a) (Scope () Exp a)
   -- TODO(sandy): doesn't work for polymorphic assertions (occurs checks)
   | Assert (Exp a) Type
   deriving (Functor, Foldable, Traversable)
@@ -179,16 +181,66 @@ instance Monad Exp where
   LProd a b  >>= f = LProd (a >>= f) (b >>= f)
   LInj x a   >>= f = LInj x (a >>= f)
   (x :@ y)   >>= f = (x >>= f) :@ (y >>= f)
-  Lam e      >>= f = Lam (e >>>= f)
-  Let bs b   >>= f = Let (bs >>= f) (b >>>= f)
+  Lam n e    >>= f = Lam n (e >>>= f)
+  Let n bs b >>= f = Let n (bs >>= f) (b >>>= f)
   Assert e t >>= f = Assert (e >>= f) t
+
+
+newtype VName = VName { unVName :: String }
+  deriving (Eq, Ord, IsString)
+
+
+instance Show VName where
+  show = unVName
 
 
 deriveEq1 ''Exp
 deriveShow1 ''Exp
 
 deriving instance Eq a   => Eq (Exp a)
-deriving instance Show a => Show (Exp a)
+deriving instance {-# OVERLAPPABLE #-} Show a => Show (Exp a)
+
+instance Show (Exp VName) where
+  showsPrec x (V a) =
+    showParen (all ((||) <$> isSymbol <*> isPunctuation) $ unVName a)
+      $ showsPrec x a
+  showsPrec x (V "." :@ a :@ b) =
+    showParen (x >= 9)
+      $ showsPrec 9 a
+      . showString " . "
+      . showsPrec 9 b
+  showsPrec x (a :@ b) =
+    showParen (x >= 10)
+      $ showsPrec 9 a
+      . showString " "
+      . showsPrec 10 b
+  showsPrec _ (LInt z)  = showString $ show z
+  showsPrec _ (LBool z) = showString $ show z
+  showsPrec _ LUnit     = showString "unit"
+  showsPrec x (Lam n z) = showParen (x >= 2)
+    $ showString "\\"
+    . showString (show n)
+    . showString ". "
+    . showsPrec 1 (instantiate1 (V n) z)
+  showsPrec x (Let n b e) = showParen (x > 0)
+    $ showString "let "
+    . showString (show n)
+    . showString " = "
+    . showsPrec 0 b
+    . showString " in "
+    . showsPrec 0 (instantiate1 (V n) e)
+  showsPrec _ (LProd a b) = showParen True
+    $ showsPrec 0 a
+    . showString ", "
+    . showsPrec 0 b
+  showsPrec x (LInj b v) = showParen (x >= 10)
+    $ showString (bool "inl" "inr" b)
+    . showString " "
+    . showsPrec 10 v
+  showsPrec x (Assert e t) = showParen (x > 0)
+    $ showsPrec 0 e
+    . showString " :: "
+    . showsPrec 0 t
 
 
 infixr 0 :=>
@@ -227,13 +279,6 @@ newtype CName = CName { unCName :: String }
 instance Show CName where
   show = unCName
 
-
-newtype VName = VName { unVName :: String }
-  deriving (Eq, Ord, IsString)
-
-
-instance Show VName where
-  show = unVName
 
 
 data Scheme = Scheme
@@ -340,15 +385,15 @@ whnf std (V name) =
     Nothing -> V name
 whnf std (f :@ a) =
   case whnf std f of
-    Lam b -> whnf std (instantiate1 a b)
+    Lam _ b -> whnf std (instantiate1 a b)
     f' -> f' :@ a
 whnf _ e = e
 
 
-lam :: Eq a => a -> Exp a -> Exp a
-lam x e = Lam (abstract1 x e)
+lam :: VName -> Exp VName -> Exp VName
+lam x e = Lam x (abstract1 x e)
 
 
-let_ :: Eq a => a -> Exp a -> Exp a -> Exp a
-let_ x v e = Let v (abstract1 x e)
+let_ :: VName -> Exp VName -> Exp VName -> Exp VName
+let_ x v e = Let x v (abstract1 x e)
 

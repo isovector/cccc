@@ -14,11 +14,7 @@ fromRight (Right a) = a
 
 cccType :: Exp VName -> Qual Type -> SpecWith ()
 cccType e (q :=> t) = it (show t) $
-  test' (toCCC e) `shouldBe` Right (q :=> TSum t TUnit)
-
-cccFail :: Exp VName -> SpecWith ()
-cccFail e = it ("fail: " <> show e) $
-  test' (toCCC e) `shouldBe` Right ([] :=> TSum "a" TUnit)
+  test' (toCCC e) `shouldBe` Right (q :=> t)
 
 
 spec :: Spec
@@ -43,5 +39,7 @@ spec = do
       [CCat "b"]
         :=> TCat "b" "a" (TProd "c" "d" :-> "c")
 
-    cccFail "fst"
+    cccType "fst" $
+      [CCat "c"]
+        :=> TCat "c" (TProd "a" "b") "a"
 
