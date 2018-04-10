@@ -347,6 +347,14 @@ stdLib' =
       ( [] :=> TProd "a" "b" :-> "b"
       , undefined
       ))
+  , ("swap",
+      ( [] :=> TProd "a" "b" :-> TProd "b" "a"
+      , lam "z" $ LProd ("snd" :@ "z") ("fst" :@ "z")
+      ))
+  , ("shouldInline",
+      ( [IsInst "ToInline" "a"] :=> "a" :-> "a"
+      , "id"
+      ))
   , ("inl",
       ( [] :=> "a" :-> TSum "a" "b"
       , lam "x" $ LInj False "x"
@@ -356,7 +364,11 @@ stdLib' =
       , lam "x" $ LInj True "x"
       ))
   , ("proj",
-      ( [] :=> ("a" :-> "c") :-> ("b" :-> "c") :-> TSum "a" "b" :-> "c"
+      ( []
+          :=> ("a" :-> "c")
+          :-> ("b" :-> "c")
+          :-> TSum "a" "b"
+          :-> "c"
       , undefined
       ))
   , ("fromLeft",
@@ -365,8 +377,8 @@ stdLib' =
       ))
   , (".",
       ( [CCat "k"]
-          :=> (TCat "k" "b" "c")
-          :-> (TCat "k" "a" "b")
+          :=> TCat "k" "b" "c"
+          :-> TCat "k" "a" "b"
           :-> TCat "k" "a" "c"
       , lam "g" . lam "f" . lam "x" $ "g" :@ ("f" :@ "x")
       ))
@@ -377,15 +389,15 @@ stdLib' =
       ))
   , ("curry",
       ( [CCat "k"]
-          :=> (TCat "k" (TProd "a" "b") "c")
-          :-> (TCat "k" "a" ("b" :-> "c"))
+          :=> TCat "k" (TProd "a" "b") "c"
+          :-> TCat "k" "a" ("b" :-> "c")
       , undefined
       ))
   , ("fork",
       ( [CCat "k"]
-          :=> (TCat "k" "a" "c")
-          :-> (TCat "k" "a" "d")
-          :-> (TCat "k" "a" (TProd "c" "d"))
+          :=> TCat "k" "a" "c"
+          :-> TCat "k" "a" "d"
+          :-> TCat "k" "a" (TProd "c" "d")
       , undefined
       ))
   , ("unit",

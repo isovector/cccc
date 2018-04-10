@@ -8,6 +8,7 @@ import Test.Hspec
 import TypeChecking
 import Types
 import Data.Monoid ((<>))
+import Data.List (partition)
 
 fromRight (Right a) = a
 
@@ -15,6 +16,13 @@ fromRight (Right a) = a
 cccType :: Exp VName -> Qual Type -> SpecWith ()
 cccType e (q :=> t) = it (show e) $
   test' (toCCC e) `shouldBe` Right (q :=> t)
+
+cccDidntInline :: Exp VName -> Qual Type -> SpecWith ()
+cccDidntInline e (q :=> t) = it ("to inline: " <> show e) $ do
+  let Right (q' :=> t') = test' $ toCCC e
+      (i, q'')          = partition ((== "ToInline") . predCName) q'
+  (q'' :=> t') `shouldBe` (q :=> t)
+  i `shouldNotBe` []
 
 
 spec :: Spec
@@ -37,6 +45,10 @@ spec = do
     cccType (lam "z" $ LProd ("snd" :@ "z") ("fst" :@ "z")) $
       [CCat "c"]
         :=> TCat "c" (TProd "a" "b") (TProd "b" "a")
+    cccDidntInline "swap" $
+      [CCat "c"]
+        :=> TCat "c" (TProd "a" "b") (TProd "b" "a")
+
 
     cccType (lam "x" $ lam "y" $ LProd (LInt 5) (LBool True)) $
       [CCat "b"]

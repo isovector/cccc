@@ -35,7 +35,17 @@ toCCC :: Exp VName -> Exp VName
 toCCC (Lam n x) =
   case unscope x of
     V (B ())    -> "id"
-    V (F (V a)) -> "const" :@ V a
+    V (F (V a)) ->
+      (case a of
+         -- TODO(sandy): more generally we should look at the SymTable and see
+         -- if there is a categorical context in order to return id here
+        "id"  -> id
+        ","   -> id
+        "fst" -> id
+        "snd" -> id
+        "."   -> id
+        _ -> \z -> ("." :@ z :@ "shouldInline")
+      ) "const" :@ V a
     V (F _)     -> error "this should never be hit"
     u :@ v      ->
       foldl1 (:@)
