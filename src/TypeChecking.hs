@@ -87,13 +87,13 @@ instantiate :: Scheme -> TI (Qual Type)
 instantiate (Scheme vars t) = do
   nvars <- traverse newTyVar $ fmap tKind vars
   let subst = Subst $ M.fromList (zip vars nvars)
-  pure $ apply subst t
+  pure $ sub subst t
 
 
 unify :: Type -> Type -> TI Subst
 unify (l :@@ r) (l' :@@ r') = do
   s1 <- unify l l'
-  s2 <- unify (apply s1 r) (apply s1 r')
+  s2 <- unify (sub s1 r) (sub s1 r')
   pure $ s1 <> s2
 unify (TCon a) (TCon b)
   | a == b  = pure mempty
@@ -152,10 +152,10 @@ infer f env (Let _ e1 b) = do
   name <- newVName f
   let e2 = splatter name b
   (s1, p1, t1) <- infer f env e1
-  let t'   = generalize (apply s1 env) $ apply s1 p1 :=> t1
+  let t'   = generalize (sub s1 env) $ sub s1 p1 :=> t1
       env' = SymTable $ M.insert name t' $ unSymTable env
-  (s2, p2, t2) <- infer f (apply s1 env') e2
-  pure (s1 <> s2, apply s2 $ p2, t2)
+  (s2, p2, t2) <- infer f (sub s1 env') e2
+  pure (s1 <> s2, sub s2 $ p2, t2)
 infer _ _ (LInt _)  = pure (mempty, mempty, TInt)
 infer _ _ (LBool _) = pure (mempty, mempty, TBool)
 infer _ _ (LUnit)   = pure (mempty, mempty, TUnit)
@@ -163,14 +163,14 @@ infer f env (LInj which a) = do
   t <- newTyVar KStar
   (s1, p1, t1) <- infer f env a
   t2 <- newTyVar KStar
-  s2 <- unify t . apply s1 $ bool id flip which TProd t1 t2
+  s2 <- unify t . sub s1 $ bool id flip which TProd t1 t2
   pure (s1 <> s2, p1, t)
 infer f env (LProd a b) = do
   t <- newTyVar KStar
   (s1, p1, t1) <- infer f env a
   -- TODO(sandy): maybe too many applys? it seems to work without
-  (s2, p2, t2) <- infer f (apply s1 env) b
-  s3 <- unify t . apply (s1 <> s2) $ TProd t1 t2
+  (s2, p2, t2) <- infer f (sub s1 env) b
+  s3 <- unify t . sub (s1 <> s2) $ TProd t1 t2
   pure (s1 <> s2 <> s3, p1 <> p2, t)
 
 infer f (SymTable env) (Lam _ x) = do
@@ -179,15 +179,15 @@ infer f (SymTable env) (Lam _ x) = do
   let env' = SymTable $ env <> [(name, Scheme [] $ [] :=> tv)]
       e = splatter name x
   (s1, p1, t1) <- infer f env' e
-  pure (s1, p1, TArr (apply s1 tv) t1)
+  pure (s1, p1, TArr (sub s1 tv) t1)
 
 infer f env exp@(e1 :@ e2) =
   do
     tv <- newTyVar KStar
     (s1, p1, t1) <- infer f env e1
-    (s2, p2, t2) <- infer f (apply s1 env) e2
-    s3 <- unify (apply s2 t1) (TArr t2 tv)
-    pure (s1 <> s2 <> s3, p1 <> p2, apply s3 tv)
+    (s2, p2, t2) <- infer f (sub s1 env) e2
+    s3 <- unify (sub s2 t1) (TArr t2 tv)
+    pure (s1 <> s2 <> s3, p1 <> p2, sub s3 tv)
   `catchE` \e -> throwE $
     mconcat
       [ e
@@ -201,9 +201,9 @@ infer f env exp@(e1 :@ e2) =
 typeInference :: ClassEnv -> Map VName Scheme -> Exp VName -> TI (Qual Type)
 typeInference cenv env e = do
   (s, ps, t) <- infer (VName . ("!!!v" <>) . show) (SymTable env) e
-  zs <- traverse (discharge cenv) $ apply (flatten s) ps
+  zs <- traverse (discharge cenv) $ sub (flatten s) ps
   let (s', ps') = mconcat zs
-      (ps'' :=> t') = apply (flatten s') $ ps' :=> apply (flatten s) t
+      (ps'' :=> t') = sub (flatten s') $ ps' :=> sub (flatten s) t
   errorAmbiguous $ nub ps'' :=> t'
 
 
@@ -214,7 +214,7 @@ showTrace = trace =<< show
 flatten :: Subst -> Subst
 flatten (Subst x) = fix $ \(Subst final) ->
   Subst $ M.fromList $ M.assocs x <&> \(a, b) -> (a,) $
-    apply (Subst final) $ case b of
+    sub (Subst final) $ case b of
       TVar n -> maybe (TVar n) id $ M.lookup n final
       z      -> z
 
@@ -269,7 +269,7 @@ discharge c@(ClassEnv cenv) p = do
     pure $ First s
   case getFirst $ mconcat x of
     Just (ps, s) ->
-      fmap mconcat $ traverse (discharge c) $ apply s $ ps
+      fmap mconcat $ traverse (discharge c) $ sub s $ ps
     Nothing -> pure $ (mempty, pure p)
 
 

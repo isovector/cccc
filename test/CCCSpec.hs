@@ -13,7 +13,7 @@ fromRight (Right a) = a
 
 
 cccType :: Exp VName -> Qual Type -> SpecWith ()
-cccType e (q :=> t) = it (show t) $
+cccType e (q :=> t) = it (show e) $
   test' (toCCC e) `shouldBe` Right (q :=> t)
 
 
@@ -30,6 +30,13 @@ spec = do
     cccType (lam "x" $ lam "y" $ LProd "x" "y") $
       [CCat "c"]
         :=> TCat "c" (TProd "a" "b") (TProd "a" "b")
+
+    cccType (lam "x" $ lam "y" $ LProd "y" "x") $
+      [CCat "c"]
+        :=> TCat "c" (TProd "a" "b") (TProd "b" "a")
+    cccType (lam "z" $ LProd ("snd" :@ "z") ("fst" :@ "z")) $
+      [CCat "c"]
+        :=> TCat "c" (TProd "a" "b") (TProd "b" "a")
 
     cccType (lam "x" $ lam "y" $ LProd (LInt 5) (LBool True)) $
       [CCat "b"]

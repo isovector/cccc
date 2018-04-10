@@ -218,7 +218,7 @@ instance Show (Exp VName) where
   showsPrec _ (LBool z) = showString $ show z
   showsPrec _ LUnit     = showString "unit"
   showsPrec x (Lam n z) = showParen (x >= 2)
-    $ showString "\\"
+    $ showString "λ"
     . showString (show n)
     . showString ". "
     . showsPrec 1 (instantiate1 (V n) z)
@@ -295,7 +295,7 @@ infixr 1 :->
 
 class Types a where
   free :: a -> Set TName
-  apply :: Subst -> a -> a
+  sub :: Subst -> a -> a
 
 
 instance Types Type where
@@ -307,36 +307,36 @@ instance Types Type where
   free TVoid       = []
   free (a :@@ b)   = free a <> free b
 
-  apply s (TVar n)    = maybe (TVar n) id $ M.lookup n $ unSubst s
-  apply _ (TCon n)    = TCon n
-  apply s (a :@@ b)   = apply s a :@@ apply s b
-  apply _ TInt        = TInt
-  apply _ TUnit       = TUnit
-  apply _ TBool       = TBool
-  apply _ TVoid       = TVoid
+  sub s (TVar n)    = maybe (TVar n) id $ M.lookup n $ unSubst s
+  sub _ (TCon n)    = TCon n
+  sub s (a :@@ b)   = sub s a :@@ sub s b
+  sub _ TInt        = TInt
+  sub _ TUnit       = TUnit
+  sub _ TBool       = TBool
+  sub _ TVoid       = TVoid
 
 
 instance Types a => Types [a] where
   free = mconcat . fmap free
-  apply s = fmap (apply s)
+  sub s = fmap (sub s)
 
 
 instance Types a => Types (Qual a) where
   free (a :=> b)    = free a <> free b
-  apply s (a :=> b) = apply s a :=> apply s b
+  sub s (a :=> b) = sub s a :=> sub s b
 
 
 instance Types Pred where
   free (IsInst _ a)    = free a
-  apply s (IsInst a b) = IsInst a (apply s b)
+  sub s (IsInst a b) = IsInst a (sub s b)
 
 
 instance Types Scheme where
   free (Scheme vars t) = free t S.\\ S.fromList vars
 
-  -- apply all `s` that are not quantified?
-  apply s (Scheme vars t) =
-    Scheme vars $ apply (Subst $ foldr M.delete (unSubst s) vars) t
+  -- sub all `s` that are not quantified?
+  sub s (Scheme vars t) =
+    Scheme vars $ sub (Subst $ foldr M.delete (unSubst s) vars) t
 
 
 newtype Subst = Subst
@@ -347,7 +347,7 @@ newtype Subst = Subst
 instance Monoid Subst where
   mempty = Subst mempty
   mappend s1 (Subst s2) =
-    Subst $ fmap (apply s1) s2 <> unSubst s1
+    Subst $ fmap (sub s1) s2 <> unSubst s1
 
 
 newtype ClassEnv = ClassEnv
@@ -362,7 +362,7 @@ newtype SymTable a = SymTable
 
 instance Types (SymTable a) where
   free = free . M.elems . unSymTable
-  apply s = SymTable . fmap (apply s) . unSymTable
+  sub s = SymTable . fmap (sub s) . unSymTable
 
 
 pattern CCat :: String -> Pred
