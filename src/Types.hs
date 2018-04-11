@@ -16,6 +16,7 @@ module Types where
 
 import           Bound hiding (instantiate)
 import           Control.Monad.State
+import           Data.Bifunctor (second)
 import           Data.Bool (bool)
 import           Data.Char (isLower, isSymbol, isPunctuation)
 import           Data.Eq.Deriving (deriveEq1)
@@ -147,6 +148,46 @@ tKind (TName _ k)      = k
 tKind (TFreshName _ k) = k
 
 
+data Pat
+  = PVar VName
+  | PWildcard
+  | PAs VName Pat
+  | PCon VName [Pat]
+  deriving (Eq, Ord, Show)
+
+
+data Assump
+  = VName :>: Scheme
+  deriving (Eq, Ord)
+
+
+data Scheme = Scheme
+  { schemeVars :: [TName]
+  , schemeType :: Qual Type
+  }
+  deriving (Eq, Ord)
+
+
+mkScheme :: Type -> Scheme
+mkScheme t = Scheme mempty $ [] :=> t
+
+
+infixr 0 :=>
+data Qual t = (:=>)
+  { qualPreds  :: [Pred]
+  , unqualType :: t
+  } deriving (Eq, Ord, Functor, Traversable, Foldable)
+
+data Pred = IsInst
+  { predCName :: CName
+  , predInst  :: Type
+  } deriving (Eq, Ord)
+
+
+newtype CName = CName { unCName :: String }
+  deriving (Eq, Ord, IsString)
+
+
 infixl 9 :@
 data Exp a
   = V a
@@ -158,7 +199,7 @@ data Exp a
   | Exp a :@ Exp a
   | Lam VName (Scope () Exp a)
   | Let VName (Exp a) (Scope () Exp a)
-  -- | Case (Exp a) [(Pat a, Exp a)]
+  | Case (Exp a) [(Pat, Scope VName Exp a)]
   -- TODO(sandy): doesn't work for polymorphic assertions (occurs checks)
   | Assert (Exp a) Type
   deriving (Functor, Foldable, Traversable)
@@ -185,6 +226,7 @@ instance Monad Exp where
   Lam n e    >>= f = Lam n (e >>>= f)
   Let n bs b >>= f = Let n (bs >>= f) (b >>>= f)
   Assert e t >>= f = Assert (e >>= f) t
+  Case e p   >>= f = Case (e >>= f) $ fmap (second (>>>= f)) p
 
 
 newtype VName = VName { unVName :: String }
@@ -200,6 +242,8 @@ deriveShow1 ''Exp
 
 deriving instance Eq a   => Eq (Exp a)
 deriving instance {-# OVERLAPPABLE #-} Show a => Show (Exp a)
+deriving instance Show Scheme
+deriving instance Show Assump
 
 instance Show (Exp VName) where
   showsPrec x (V a) =
@@ -242,13 +286,9 @@ instance Show (Exp VName) where
     $ showsPrec 0 e
     . showString " :: "
     . showsPrec 0 t
+  -- TODO(sandy): fix
+  showsPrec _ (Case _ _) = showString "CASE"
 
-
-infixr 0 :=>
-data Qual t = (:=>)
-  { qualPreds  :: [Pred]
-  , unqualType :: t
-  } deriving (Eq, Ord, Functor, Traversable, Foldable)
 
 
 instance Show t => Show (Qual t) where
@@ -263,30 +303,15 @@ instance Show t => Show (Qual t) where
              , show b
              ]
 
-data Pred = IsInst
-  { predCName :: CName
-  , predInst  :: Type
-  } deriving (Eq, Ord)
-
 
 instance Show Pred where
   show (IsInst a b) = show a <> " (" <> show b <> ")"
-
-
-newtype CName = CName { unCName :: String }
-  deriving (Eq, Ord, IsString)
 
 
 instance Show CName where
   show = unCName
 
 
-
-data Scheme = Scheme
-  { schemeVars :: [TName]
-  , schemeType :: Qual Type
-  }
-  deriving (Eq, Ord, Show)
 
 
 pattern (:->) :: Type -> Type -> Type
@@ -297,6 +322,11 @@ infixr 1 :->
 class Types a where
   free :: a -> Set TName
   sub :: Subst -> a -> a
+
+
+instance Types Assump where
+  free (_ :>: a)  = free a
+  sub s (x :>: a) = x :>: sub s a
 
 
 instance Types Type where
@@ -394,6 +424,18 @@ whnf _ e = e
 lam :: VName -> Exp VName -> Exp VName
 lam x e = Lam x (abstract1 x e)
 
+case_ :: Exp VName -> [(Pat, Exp VName)] -> Exp VName
+case_ e ps
+  = Case e
+  . flip fmap ps
+  $ \(p, ep) -> (p, abstract
+  (\x -> bool Nothing (Just x) $ elem x $ pVars p) ep)
+
+pVars :: Pat -> [VName]
+pVars PWildcard  = []
+pVars (PVar i)   = pure i
+pVars (PAs i p)  = i : pVars p
+pVars (PCon _ p) = foldMap pVars p
 
 let_ :: VName -> Exp VName -> Exp VName -> Exp VName
 let_ x v e = Let x v (abstract1 x e)
