@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell   #-}
 {-# LANGUAGE TupleSections     #-}
 {-# LANGUAGE TypeApplications  #-}
 {-# LANGUAGE ViewPatterns      #-}
@@ -10,12 +11,13 @@ module TypeChecking where
 import           Bound
 import           Bound.Scope
 import           Control.Applicative ((<|>))
-import           Control.Lens ((<&>))
+import           Control.Lens ((<&>), makeLenses, view, (%~), (<>~))
 import           Control.Monad.State
 import           Control.Monad.Trans.Except
 import           Data.Bifunctor
 import           Data.Bool (bool)
-import           Data.List (nub, intercalate, unzip4)
+import           Data.Foldable (for_)
+import           Data.List (nub, intercalate)
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Monoid ((<>), First (..))
@@ -26,8 +28,23 @@ import           Prelude hiding (exp)
 import           Types
 
 
-type TI = ExceptT String (State (Int, Int))
+data TIState = TIState
+  { _tiVNames :: Int
+  , _tiTNames :: Int
+  , _tiSubst  :: Subst
+  }
 
+makeLenses ''TIState
+
+type TI = ExceptT String (State TIState)
+
+
+unify :: Type -> Type -> TI ()
+unify t1 t2 = do
+  s  <- view tiSubst <$> get
+  s' <- mgu (sub s t1) (sub s t2)
+  modify $ tiSubst <>~ s'
+  pure ()
 
 
 kind :: Type -> TI Kind
@@ -61,8 +78,8 @@ kind (a :@@ b) = do
 
 newVName :: (Int -> a) -> TI a
 newVName f = do
-  n <- snd <$> get
-  modify $ second (+1)
+  n <- view tiVNames <$> get
+  modify $ tiVNames %~ (+1)
   pure $ f n
 
 
@@ -74,13 +91,13 @@ letters = do
 
 
 runTI :: TI a -> Either String a
-runTI = flip evalState (0, 0) . runExceptT
+runTI = flip evalState (TIState 0 0 mempty) . runExceptT
 
 
 newTyVar :: Kind -> TI Type
 newTyVar k = do
-  n <- fst <$> get
-  modify $ first (+1)
+  n <- view tiTNames <$> get
+  modify $ tiTNames %~ (+1)
   pure . TVar . flip TFreshName k $ letters !! n
 
 
@@ -91,19 +108,19 @@ freshInst (Scheme vars t) = do
   pure $ sub subst t
 
 
-unify :: Type -> Type -> TI Subst
-unify (l :@@ r) (l' :@@ r') = do
-  s1 <- unify l l'
-  s2 <- unify (sub s1 r) (sub s1 r')
+mgu :: Type -> Type -> TI Subst
+mgu (l :@@ r) (l' :@@ r') = do
+  s1 <- mgu l l'
+  s2 <- mgu (sub s1 r) (sub s1 r')
   pure $ s1 <> s2
-unify (TCon a) (TCon b)
+mgu (TCon a) (TCon b)
   | a == b  = pure mempty
-unify (TVar u) t  = varBind u t
-unify t (TVar u)  = varBind u t
-unify TInt TInt   = pure mempty
-unify TVoid TVoid = pure mempty
-unify TUnit TUnit = pure mempty
-unify t1 t2       = throwE $
+mgu (TVar u) t  = varBind u t
+mgu t (TVar u)  = varBind u t
+mgu TInt TInt   = pure mempty
+mgu TVoid TVoid = pure mempty
+mgu TUnit TUnit = pure mempty
+mgu t1 t2       = throwE $
   mconcat
     [ "types don't unify: '"
     , show t1
@@ -138,67 +155,68 @@ infer
     :: (Int -> VName)
     -> SymTable VName
     -> Exp VName
-    -> TI (Subst, [Pred], Type)
+    -> TI ([Pred], Type)
 infer f env (Assert e t) = do
-  (s1, p1, t1) <- infer f env e
-  s2           <- unify t1 t
-  pure (s1 <> s2, p1, t)
+  (p1, t1) <- infer f env e
+  unify t t1
+  s <- view tiSubst <$> get
+  pure (sub s p1, t)
 infer _ (SymTable env) (V a) =
   case M.lookup a env of
     Nothing -> throwE $ "unbound variable: '" <> show a <> "'"
     Just sigma -> do
       (ps :=> x) <- freshInst sigma
-      pure (mempty, ps, x)
+      pure (ps, x)
 infer f env (Let _ e1 b) = do
   name <- newVName f
   let e2 = splatter name b
-  (s1, p1, t1) <- infer f env e1
-  let t'   = generalize (sub s1 env) $ sub s1 p1 :=> t1
+  (p1, t1) <- infer f env e1
+  let t'   = generalize env $ p1 :=> t1
       env' = SymTable $ M.insert name t' $ unSymTable env
-  (s2, p2, t2) <- infer f (sub s1 env') e2
-  pure (s1 <> s2, sub s2 $ p2, t2)
-infer _ _ (LInt _)  = pure (mempty, mempty, TInt)
-infer _ _ (LBool _) = pure (mempty, mempty, TBool)
-infer _ _ (LUnit)   = pure (mempty, mempty, TUnit)
+  (p2, t2) <- infer f env' e2
+  pure (p2, t2)
+infer _ _ (LInt _)  = pure (mempty, TInt)
+infer _ _ (LBool _) = pure (mempty, TBool)
+infer _ _ (LUnit)   = pure (mempty, TUnit)
 infer f env (LInj which a) = do
   t <- newTyVar KStar
-  (s1, p1, t1) <- infer f env a
+  (p1, t1) <- infer f env a
   t2 <- newTyVar KStar
-  s2 <- unify t . sub s1 $ bool id flip which TProd t1 t2
-  pure (s1 <> s2, p1, t)
+  unify t $ bool id flip which TProd t1 t2
+  pure (p1, t)
+
 infer f env (LProd a b) = do
   t <- newTyVar KStar
-  (s1, p1, t1) <- infer f env a
-  -- TODO(sandy): maybe too many applys? it seems to work without
-  (s2, p2, t2) <- infer f (sub s1 env) b
-  s3 <- unify t . sub (s1 <> s2) $ TProd t1 t2
-  pure (s1 <> s2 <> s3, p1 <> p2, t)
+  (p1, t1) <- infer f env a
+  (p2, t2) <- infer f env b
+  unify t $ TProd t1 t2
+  pure (p1 <> p2, t)
 
-infer f env (Case e ps) = do
-  t <- newTyVar KStar
-  (s1, p1, te) <- infer f env e
-  (ss, p2, tes, ts) <- fmap unzip4 . for ps $ \(pat, pexp) -> do
-    (sps, as, ts) <- inferPattern env pat
-    se <- unify te ts
-    let env' = SymTable $ M.fromList (as <&> \(i :>: x) -> (i, x))
-                       <> unSymTable env
-        pexp' = instantiate V pexp
-    (s2, p2, tp) <- infer f (sub (s1 <> sps <> se) env') pexp'
-    let alls = sps <> s2 <> se
-    pure $ (alls, sub alls p2, sub alls ts, sub alls tp)
+-- infer f env (Case e ps) = do
+--   t <- newTyVar KStar
+--   (p1, te) <- infer f env e
+--   (ss, p2, tes, ts) <- fmap unzip4 . for ps $ \(pat, pexp) -> do
+--     (sps, as, ts) <- inferPattern env pat
+--     se <- mgu te ts
+--     let env' = SymTable $ M.fromList (as <&> \(i :>: x) -> (i, x))
+--                        <> unSymTable env
+--         pexp' = instantiate V pexp
+--     (s2, p2, tp) <- infer f (sub (s1 <> sps <> se) env') pexp'
+--     let alls = sps <> s2 <> se
+--     pure $ (alls, sub alls p2, sub alls ts, sub alls tp)
 
-  sts1 <- unifyAll $ t : ts
-  sts2 <- unifyAll $ sub sts1 $ te : tes
-  let alls = s1 <> mconcat ss <> sts1 <> sts2
-  pure (alls, sub alls $ p1 <> join p2, sub alls t)
+--   sts1 <- unifyAll $ t : ts
+--   sts2 <- unifyAll $ sub sts1 $ te : tes
+--   let alls = s1 <> mconcat ss <> sts1 <> sts2
+--   pure (alls, sub alls $ p1 <> join p2, sub alls t)
 
 infer f (SymTable env) (Lam _ x) = do
   name <- newVName f
   tv <- newTyVar KStar
   let env' = SymTable $ env <> [(name, mkScheme tv)]
       e = splatter name x
-  (s1, p1, t1) <- infer f env' e
-  pure (s1, p1, TArr (sub s1 tv) t1)
+  (p1, t1) <- infer f env' e
+  pure (p1, TArr tv t1)
 
 -- infer f env (Case e ps) = do
 --   tvs <- for ps $ \(pat, pexp) -> do
@@ -208,16 +226,16 @@ infer f (SymTable env) (Lam _ x) = do
 --     _
 --   undefined
 --   -- make a type var for each pattern expr
---   -- unify them all
+--   -- mgu them all
 --   -- >> all branches return the same type
 
 infer f env exp@(e1 :@ e2) =
   do
     tv <- newTyVar KStar
-    (s1, p1, t1) <- infer f env e1
-    (s2, p2, t2) <- infer f (sub s1 env) e2
-    s3 <- unify (sub s2 t1) (TArr t2 tv)
-    pure (s1 <> s2 <> s3, p1 <> p2, sub s3 tv)
+    (p1, t1) <- infer f env e1
+    (p2, t2) <- infer f env e2
+    unify t1 $ TArr t2 tv
+    pure (p1 <> p2, tv)
   `catchE` \e -> throwE $
     mconcat
       [ e
@@ -228,39 +246,40 @@ infer f env exp@(e1 :@ e2) =
       ]
 
 
-unifyAll :: [Type] -> TI Subst
+unifyAll :: [Type] -> TI ()
 unifyAll t = do
   let ts = zip t $ tail t
-  fmap mconcat . for ts $ uncurry unify
+  for_ ts $ uncurry unify
 
 
-inferPattern :: SymTable VName -> Pat -> TI (Subst, [Assump], Type)
+inferPattern :: SymTable VName -> Pat -> TI ([Assump], Type)
 inferPattern _ PWildcard = do
   ty <- newTyVar KStar
-  pure (mempty, mempty, ty)
+  pure (mempty, ty)
 inferPattern _ (PVar x) = do
   ty <- newTyVar KStar
-  pure (mempty, pure $ x :>: mkScheme ty, ty)
+  pure (pure $ x :>: mkScheme ty, ty)
 inferPattern st (PAs x p) = do
-  (s, as, t) <- inferPattern st p
-  pure (s, x :>: mkScheme t : as, t)
+  (as, t) <- inferPattern st p
+  pure (x :>: mkScheme t : as, t)
 inferPattern st (PCon c ps) = do
   t <- newTyVar KStar
-  (ss, as, ts) <- first join . unzip3 <$> for ps (inferPattern st)
+  (as, ts) <- first join . unzip <$> for ps (inferPattern st)
   -- this is gross! there is a bug here if the type constructor has constraints
   -- on it
-  (_, _, ct) <- infer (error "unused") st $ V c
-  s <- unify ct $ foldr (:->) t ts
-  let alls = mconcat ss <> s
-  pure (alls, sub alls as, sub alls t)
+  (_, ct) <- infer (error "unused") st $ V c
+  unify ct $ foldr (:->) t ts
+  pure (as, t)
 
 
 typeInference :: ClassEnv -> Map VName Scheme -> Exp VName -> TI (Qual Type)
 typeInference cenv env e = do
-  (s, ps, t) <- infer (VName . ("!!!v" <>) . show) (SymTable env) e
+  (ps, t) <- infer (VName . ("!!!v" <>) . show) (SymTable env) e
+  s <- view tiSubst <$> get
   zs <- traverse (discharge cenv) $ sub (flatten s) ps
   let (s', ps') = mconcat zs
-      (ps'' :=> t') = sub (flatten s') $ ps' :=> sub (flatten s) t
+      s'' = flatten $ s <> s'
+      (ps'' :=> t') = sub s'' $ ps' :=> t
   errorAmbiguous $ nub ps'' :=> t'
 
 
@@ -282,7 +301,7 @@ generalize env t =
 
 
 normalizeType :: Qual Type -> Qual Type
-normalizeType = id -- schemeType . normalize . Scheme mempty
+normalizeType = schemeType . normalize . Scheme mempty
 
 
 normalize :: Scheme -> Scheme
