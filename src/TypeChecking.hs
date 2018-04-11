@@ -296,7 +296,7 @@ match :: Type -> Type -> TI Subst
 match (l :@@ r) (l' :@@ r') = do
   sl <- match l l'
   sr <- match r r'
-  pure $ sl <> sr
+  pure . Subst $ unSubst sl <> unSubst sr
 match (TVar u) t = pure $ Subst [(u, t)]
 match TInt TInt = pure mempty
 match TVoid TVoid = pure mempty

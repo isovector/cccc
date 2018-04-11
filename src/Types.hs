@@ -158,6 +158,7 @@ data Exp a
   | Exp a :@ Exp a
   | Lam VName (Scope () Exp a)
   | Let VName (Exp a) (Scope () Exp a)
+  -- | Case (Exp a) [(Pat a, Exp a)]
   -- TODO(sandy): doesn't work for polymorphic assertions (occurs checks)
   | Assert (Exp a) Type
   deriving (Functor, Foldable, Traversable)
