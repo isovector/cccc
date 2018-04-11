@@ -14,7 +14,8 @@
 
 module Types where
 
-import           Bound hiding (instantiate)
+import           Bound
+import           Control.Lens ((<&>))
 import           Control.Monad.State
 import           Data.Bifunctor (second)
 import           Data.Bool (bool)
@@ -154,9 +155,23 @@ data Pat
   | PAs VName Pat
   | PCon VName [Pat]
   | PLit Lit
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord)
 
 
+instance Show Pat where
+  showsPrec _ PWildcard  = showString "_"
+  showsPrec _ (PVar x)   = showString $ show x
+  showsPrec _ (PAs x p)  =
+      showString (show x)
+    . showString "@"
+    . showsPrec 10 p
+  showsPrec _ (PLit l) = showString $ show l
+  showsPrec x (PCon n ps)  = showParen (x > 0)
+    $ showString (show n)
+    . foldl (.) id (fmap ((showString " " .) . showsPrec 10) ps)
+
+
+-- | a new variable to introduce
 data Assump
   = VName :>: Scheme
   deriving (Eq, Ord)
@@ -199,7 +214,6 @@ data Exp a
   | Lam VName (Scope () Exp a)
   | Let VName (Exp a) (Scope () Exp a)
   | Case (Exp a) [(Pat, Scope VName Exp a)]
-  -- TODO(sandy): doesn't work for polymorphic assertions (occurs checks)
   | Assert (Exp a) Type
   deriving (Functor, Foldable, Traversable)
 
@@ -303,8 +317,17 @@ instance Show (Exp VName) where
     $ showsPrec 0 e
     . showString " :: "
     . showsPrec 0 t
-  -- TODO(sandy): fix
-  showsPrec _ (Case _ _) = showString "CASE"
+  showsPrec x (Case e ps) = showParen (x > 0)
+    $ showString "case "
+    . showsPrec 0 e
+    . showString " of {"
+    . (drop 1 . foldl (.) id
+        (ps <&> \(p, pe) ->
+          showString "; "
+            . showsPrec 0 p
+            . showString " -> "
+            . showsPrec 0 (instantiate V pe)))
+    . showString " }"
 
 
 
