@@ -16,7 +16,6 @@ import           Control.Monad.State
 import           Control.Monad.Trans.Except
 import           Data.Bifunctor
 import           Data.Bool (bool)
-import           Data.Foldable (for_)
 import           Data.List (nub, intercalate)
 import           Data.Map (Map)
 import qualified Data.Map as M
@@ -192,23 +191,20 @@ infer f env (LProd a b) = do
   unify t $ TProd t1 t2
   pure (p1 <> p2, t)
 
--- infer f env (Case e ps) = do
---   t <- newTyVar KStar
---   (p1, te) <- infer f env e
---   (ss, p2, tes, ts) <- fmap unzip4 . for ps $ \(pat, pexp) -> do
---     (sps, as, ts) <- inferPattern env pat
---     se <- mgu te ts
---     let env' = SymTable $ M.fromList (as <&> \(i :>: x) -> (i, x))
---                        <> unSymTable env
---         pexp' = instantiate V pexp
---     (s2, p2, tp) <- infer f (sub (s1 <> sps <> se) env') pexp'
---     let alls = sps <> s2 <> se
---     pure $ (alls, sub alls p2, sub alls ts, sub alls tp)
+infer f env (Case e ps) = do
+  t <- newTyVar KStar
+  (p1, te) <- infer f env e
+  p2 <- for ps $ \(pat, pexp) -> do
+    (as, ts) <- inferPattern env pat
+    unify te ts
+    let env' = SymTable $ M.fromList (as <&> \(i :>: x) -> (i, x))
+                       <> unSymTable env
+        pexp' = instantiate V pexp
+    (p2, tp) <- infer f env' pexp'
+    unify t tp
+    pure p2
 
---   sts1 <- unifyAll $ t : ts
---   sts2 <- unifyAll $ sub sts1 $ te : tes
---   let alls = s1 <> mconcat ss <> sts1 <> sts2
---   pure (alls, sub alls $ p1 <> join p2, sub alls t)
+  pure (p1 <> join p2, t)
 
 infer f (SymTable env) (Lam _ x) = do
   name <- newVName f
@@ -244,12 +240,6 @@ infer f env exp@(e1 :@ e2) =
       -- , "\n\ncontext: \n"
       -- , foldMap ((<> "\n") . show) . M.assocs $ unSymTable env
       ]
-
-
-unifyAll :: [Type] -> TI ()
-unifyAll t = do
-  let ts = zip t $ tail t
-  for_ ts $ uncurry unify
 
 
 inferPattern :: SymTable VName -> Pat -> TI ([Assump], Type)

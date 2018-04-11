@@ -73,7 +73,52 @@ spec = do
       [IsInst "Eq" "a", IsInst "Eq" "b"]
         :=> TProd ("a" :-> "a" :-> TBool) ("b" :-> "b" :-> TBool)
 
+    typeCheck (
+      case_ "unit"
+        [ (PWildcard, "unit")
+        , (PWildcard, "unit")
+        ]
+      ) $ [] :=> TUnit
+
+    typeCheck (
+      case_ "unit"
+        [ (PVar "x",  "x")
+        , (PWildcard, "unit")
+        ]
+      ) $ [] :=> TUnit
+
+    typeCheck (
+      lam "z" $
+        case_ "z"
+          [ (PCon "inl" [PVar "x"],  "x")
+          , (PWildcard, "unit")
+          ]
+      ) $ [] :=> TSum TUnit "a" :-> TUnit
+
+    let lamCase =
+          lam "z" $
+            case_ "z"
+              [ (PCon "inl" [PVar "x"], "x")
+              , (PCon "inr" [PVar "z"], "z")
+              ]
+
+    typeCheck lamCase $
+      [] :=> TSum "a" "a" :-> "a"
+
+    typeCheck (lamCase :@ LBool True) $
+      [] :=> TUnit
+
     typeError $ "fst" :@ "inl"
+    typeError $
+      case_ "unit"
+        [ (PWildcard, LUnit)
+        , (PWildcard, LInt 5)
+        ]
+    typeError $
+      case_ "unit"
+        [ (PVar "x", "x")
+        , (PWildcard, LInt 5)
+        ]
 
     ambiguous $ "==" :@ "==" :@ "=="
 
