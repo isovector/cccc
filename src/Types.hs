@@ -167,7 +167,7 @@ instance Show Pat where
     . showsPrec 10 p
   showsPrec _ (PLit l) = showString $ show l
   showsPrec x (PCon n ps)  = showParen (x > 0)
-    $ showString (show n)
+    $ showString (show $ V n)
     . foldl (.) id (fmap ((showString " " .) . showsPrec 10) ps)
 
 
@@ -317,7 +317,7 @@ instance Show (Exp VName) where
     $ showsPrec 0 e
     . showString " :: "
     . showsPrec 0 t
-  showsPrec x (Case e ps) = showParen (x > 0)
+  showsPrec x (Case e ps) = showParen (x >= 2)
     $ showString "case "
     . showsPrec 0 e
     . showString " of {"

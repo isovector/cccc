@@ -398,7 +398,6 @@ classEnv = ClassEnv
   , [IsInst "Eq" "a", IsInst "Eq" "b"] :=> IsInst "Eq" (TSum "a" "b")
 
   , [] :=> IsInst "Category"  TArrCon
-  , [] :=> IsInst "Category"  (TCon (TName "Deriv" K2))
   , [] :=> IsInst "Cartesian" TArrCon
   , [] :=> IsInst "Terminal"  TArrCon  -- const
   , [] :=> IsInst "Closed"    TArrCon
@@ -413,11 +412,11 @@ stdLib' :: Map VName (Qual Type, Exp VName)
 stdLib' =
   [ ("fst",
       ( [] :=> TProd "a" "b" :-> "a"
-      , undefined
+      , lam "z" $ case_ "z" [(PCon "," [PVar "x", PWildcard], "x")]
       ))
   , ("snd",
       ( [] :=> TProd "a" "b" :-> "b"
-      , undefined
+      , lam "z" $ case_ "z" [(PCon "," [PWildcard, PVar "x"], "x")]
       ))
   , ("swap",
       ( [] :=> TProd "a" "b" :-> TProd "b" "a"
@@ -441,11 +440,11 @@ stdLib' =
           :-> ("b" :-> "c")
           :-> TSum "a" "b"
           :-> "c"
-      , undefined
-      ))
-  , ("fromLeft",
-      ( [] :=> TSum "a" "b" :-> "a"
-      , undefined
+      , lam "f" $ lam "g" $ lam "e" $
+          case_ "e"
+            [ ( PCon "inl" [PVar "x"], "f" :@ "x")
+            , ( PCon "inr" [PVar "y"], "g" :@ "y")
+            ]
       ))
   , (".",
       ( [CCat "k"]
@@ -484,10 +483,6 @@ stdLib' =
       ( [] :=> "a" :-> "b" :-> TProd "a" "b"
       , lam "a" $ lam "b" $ LProd "a" "b"
       ))
-  , ("bool",
-      ( [] :=> "a" :-> "a" :-> TBool :-> "a"
-      , undefined
-      ))
   , ("id",
       ( [CCat "k"] :=> TCat "k" "a" "a"
       , lam "x" "x"
@@ -496,7 +491,7 @@ stdLib' =
       ( [CCat "k"]
           :=> "b"
           :-> TCat "k" "a" "b"
-      , lam "x" "x"
+      , lam "x" $ lam "y" $ "x"
       ))
   , ("ccc",
       ( [CCat "k"]
@@ -505,13 +500,7 @@ stdLib' =
       ))
   , ("undefined",
       ( [] :=> "a"
-      , undefined
-      ))
-  , ("getDerivation",
-      ( [] :=> TCon (TName "Deriv" K2) :@@ "a" :@@ "b"
-           :-> "a"
-           :-> "b"
-      , undefined
+      , case_ "unit" []
       ))
   ]
 
