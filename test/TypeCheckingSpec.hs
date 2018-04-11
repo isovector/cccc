@@ -91,9 +91,9 @@ spec = do
       lam "z" $
         case_ "z"
           [ (PCon "inl" [PVar "x"],  "x")
-          , (PWildcard, "unit")
+          , (PCon "inr" [PLit LitUnit], "unit")
           ]
-      ) $ [] :=> TSum TUnit "a" :-> TUnit
+      ) $ [] :=> TBool :-> TUnit
 
     let lamCase =
           lam "z" $

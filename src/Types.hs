@@ -153,6 +153,7 @@ data Pat
   | PWildcard
   | PAs VName Pat
   | PCon VName [Pat]
+  | PLit Lit
   deriving (Eq, Ord, Show)
 
 
@@ -191,9 +192,7 @@ newtype CName = CName { unCName :: String }
 infixl 9 :@
 data Exp a
   = V a
-  | LInt Int
-  | LBool Bool
-  | LUnit
+  | Lit Lit
   | LProd (Exp a) (Exp a)
   | LInj Bool (Exp a)
   | Exp a :@ Exp a
@@ -203,6 +202,28 @@ data Exp a
   -- TODO(sandy): doesn't work for polymorphic assertions (occurs checks)
   | Assert (Exp a) Type
   deriving (Functor, Foldable, Traversable)
+
+
+pattern LInt :: Int -> Exp a
+pattern LInt i = Lit (LitInt i)
+
+pattern LBool :: Bool -> Exp a
+pattern LBool i = Lit (LitBool i)
+
+pattern LUnit :: Exp a
+pattern LUnit = Lit LitUnit
+
+
+data Lit
+  = LitInt Int
+  | LitBool Bool
+  | LitUnit
+  deriving (Eq, Ord)
+
+instance Show Lit where
+  show (LitInt i) = show i
+  show (LitBool i) = show i
+  show LitUnit = "unit"
 
 
 instance IsString a => IsString (Exp a) where
@@ -217,9 +238,7 @@ instance Applicative Exp where
 instance Monad Exp where
   return       = pure
   V a        >>= f = f a
-  LInt i     >>= _ = LInt i
-  LBool i    >>= _ = LBool i
-  LUnit      >>= _ = LUnit
+  Lit  i     >>= _ = Lit i
   LProd a b  >>= f = LProd (a >>= f) (b >>= f)
   LInj x a   >>= f = LInj x (a >>= f)
   (x :@ y)   >>= f = (x >>= f) :@ (y >>= f)
@@ -259,9 +278,7 @@ instance Show (Exp VName) where
       $ showsPrec 9 a
       . showString " "
       . showsPrec 10 b
-  showsPrec _ (LInt z)  = showString $ show z
-  showsPrec _ (LBool z) = showString $ show z
-  showsPrec _ LUnit     = showString "unit"
+  showsPrec _ (Lit l)   = showString $ show l
   showsPrec x (Lam n z) = showParen (x >= 2)
     $ showString "λ"
     . showString (show n)
@@ -436,6 +453,7 @@ pVars PWildcard  = []
 pVars (PVar i)   = pure i
 pVars (PAs i p)  = i : pVars p
 pVars (PCon _ p) = foldMap pVars p
+pVars (PLit _)   = []
 
 let_ :: VName -> Exp VName -> Exp VName -> Exp VName
 let_ x v e = Let x v (abstract1 x e)

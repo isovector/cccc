@@ -150,6 +150,12 @@ splatter :: Monad f => c -> Scope b f c -> f c
 splatter = splat pure . const . pure
 
 
+inferLit :: Lit -> Type
+inferLit (LitInt _)  = TInt
+inferLit (LitBool _) = TBool
+inferLit LitUnit     = TUnit
+
+
 infer
     :: (Int -> VName)
     -> SymTable VName
@@ -174,9 +180,7 @@ infer f env (Let _ e1 b) = do
       env' = SymTable $ M.insert name t' $ unSymTable env
   (p2, t2) <- infer f env' e2
   pure (p2, t2)
-infer _ _ (LInt _)  = pure (mempty, TInt)
-infer _ _ (LBool _) = pure (mempty, TBool)
-infer _ _ (LUnit)   = pure (mempty, TUnit)
+infer _ _ (Lit l) = pure (mempty, inferLit l)
 infer f env (LInj which a) = do
   t <- newTyVar KStar
   (p1, t1) <- infer f env a
@@ -243,6 +247,8 @@ infer f env exp@(e1 :@ e2) =
 
 
 inferPattern :: SymTable VName -> Pat -> TI ([Assump], Type)
+inferPattern _ (PLit l) = do
+  pure (mempty, inferLit l)
 inferPattern _ PWildcard = do
   ty <- newTyVar KStar
   pure (mempty, ty)
