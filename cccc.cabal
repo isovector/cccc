@@ -13,7 +13,7 @@ extra-source-files:  ChangeLog.md
 cabal-version:       >=1.10
 
 library
-  exposed-modules: TypeChecking, Types, CCC
+  exposed-modules: TypeChecking, Types, CCC, Evaluation
   -- other-modules:
   -- other-extensions:
   build-depends:       base >=4.9 && <4.10, base-prelude, containers, lens, mtl, transformers, recursion-schemes, bound, deriving-compat
@@ -23,7 +23,7 @@ library
 Test-Suite tests
   type:             exitcode-stdio-1.0
   default-language: Haskell2010
-  other-modules:    TypeCheckingSpec, CCCSpec
+  other-modules:    TypeCheckingSpec, CCCSpec, EvalSpec
   hs-Source-Dirs:   test
   main-is:          Main.hs
   build-depends:    base >=4.9 && <4.10, base-prelude, containers, lens, mtl, transformers, hspec, cccc

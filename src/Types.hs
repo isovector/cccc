@@ -449,18 +449,6 @@ pattern CClosed :: String -> Pred
 pattern CClosed t = IsInst "Closed" (TVar (TName t K2))
 
 
-whnf :: Map VName (Exp VName) -> Exp VName -> Exp VName
-whnf std (V name) =
-  case M.lookup name std of
-    Just x -> x
-    Nothing -> V name
-whnf std (f :@ a) =
-  case whnf std f of
-    Lam _ b -> whnf std (instantiate1 a b)
-    f' -> f' :@ a
-whnf _ e = e
-
-
 lam :: VName -> Exp VName -> Exp VName
 lam x e = Lam x (abstract1 x e)
 

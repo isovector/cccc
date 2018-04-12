@@ -412,11 +412,11 @@ stdLib' :: Map VName (Qual Type, Exp VName)
 stdLib' =
   [ ("fst",
       ( [] :=> TProd "a" "b" :-> "a"
-      , lam "z" $ case_ "z" [(PCon "," [PVar "x", PWildcard], "x")]
+      , lam "z" $ case_ "z" [(PCon "*" [PVar "x", PWildcard], "x")]
       ))
   , ("snd",
       ( [] :=> TProd "a" "b" :-> "b"
-      , lam "z" $ case_ "z" [(PCon "," [PWildcard, PVar "x"], "x")]
+      , lam "z" $ case_ "z" [(PCon "*" [PWildcard, PVar "x"], "x")]
       ))
   , ("swap",
       ( [] :=> TProd "a" "b" :-> TProd "b" "a"
