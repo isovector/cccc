@@ -42,6 +42,12 @@ spec = do
     eval (LInt 3) $ case_ ("inl" :@ LInt 3) myPats
     eval (LInt $ -15) $ case_ ("inr" :@ LInt 3) myPats
 
+    let prod = LProd (LInt 1) (LInt 2)
+    eval prod $ case_ prod
+      [( PAs "i" $ PCon "*" [PVar "x", PVar "y"], "i")]
+    eval (LInt 2) $ case_ prod
+      [( PAs "i" $ PCon "*" [PVar "x", PVar "y"], "y")]
+
     let idF = lam "x" "x"
     eval idF idF
 
