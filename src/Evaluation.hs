@@ -25,11 +25,15 @@ extract (PCon "*" [_, _])
 extract (PCon "*" _) _   = error "bad number of pattern ctors to *"
 extract (PCon "inl" [p])
         (LInj False a)   = extract p a
+extract (PCon "inl" [p])
+        (LBool False)    = extract p LUnit
 extract (PCon "inl" [_])
         _                = Nothing
 extract (PCon "inl" _) _ = error "bad number of pattern ctors to inl"
 extract (PCon "inr" [p])
         (LInj True a)    = extract p a
+extract (PCon "inr" [p])
+        (LBool True)     = extract p LUnit
 extract (PCon "inr" [_])
         _                = Nothing
 extract (PCon "inr" _) _ = error "bad number of pattern ctors to inr"

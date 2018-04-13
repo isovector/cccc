@@ -233,7 +233,7 @@ pattern LInt :: Int -> Exp a
 pattern LInt i = Lit (LitInt i)
 
 pattern LBool :: Bool -> Exp a
-pattern LBool i = LInj i LUnit
+pattern LBool i = Lit (LitBool i)
 
 pattern LUnit :: Exp a
 pattern LUnit = Lit LitUnit
@@ -242,10 +242,12 @@ pattern LUnit = Lit LitUnit
 data Lit
   = LitInt Int
   | LitUnit
+  | LitBool Bool
   deriving (Eq, Ord)
 
 instance Show Lit where
   show (LitInt i) = show i
+  show (LitBool i) = show i
   show LitUnit = "unit"
 
 

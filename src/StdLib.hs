@@ -48,6 +48,11 @@ classEnv = ClassEnv
         )
       ]
     )
+  , ( IsInst "Eq" TInt
+    , InstRep ([] :=> ())
+    $ [ ( "==", "undefined" )
+      ]
+    )
   , ( IsInst "Eq" TVoid
     , InstRep ([] :=> ())
     $ [ ( "==", "undefined" )
@@ -85,6 +90,9 @@ classEnv = ClassEnv
 
 stdLib :: Map VName Scheme
 stdLib = fmap (generalize $ SymTable @VName mempty) $ fmap fst stdLib'
+
+evalLib :: Map VName (Exp VName)
+evalLib = fmap snd stdLib'
 
 
 stdLib' :: Map VName (Qual Type, Exp VName)

@@ -1,8 +1,10 @@
-{-# LANGUAGE OverloadedLists   #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedLists     #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module EvalSpec where
 
+import           Data.Foldable (for_)
 import qualified Data.Map as M
 import           Data.Monoid ((<>))
 import           Evaluation
@@ -13,7 +15,11 @@ import           Types
 
 eval :: Exp VName -> Exp VName -> SpecWith ()
 eval v e = it (show e <> " |=> " <> show v) $
-  whnf (fmap snd stdLib') e `shouldBe` v
+  whnf classEnv evalLib e `shouldBe` v
+
+notEq :: Exp VName -> Exp VName -> SpecWith ()
+notEq a b = it (show a <> " <=/=> " <> show b) $
+  whnf classEnv evalLib a `shouldNotBe` whnf classEnv evalLib b
 
 getDef :: VName -> Exp VName
 getDef n = fmap snd stdLib' M.! n
@@ -59,4 +65,14 @@ spec = do
       "snd" :@ ("," :@ LInt 7 :@ "x")
 
     eval idF $ Assert idF $ TInt :-> TInt
+
+    let getDict t = "==" :@ LDict (IsInst "Eq" t)
+        apps :: [(Bool, Bool)] = do
+          a <- [False, True]
+          b <- [False, True]
+          pure (a, b)
+    for_ apps $ \(a, b) ->
+      eval (LBool $ a == b) $ getDict TBool :@ LBool a :@ LBool b
+
+    notEq (getDict TBool) $ getDict TUnit
 
