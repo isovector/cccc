@@ -14,11 +14,11 @@ import Types
 fromRight (Right a) = a
 
 
-cccType :: Exp VName -> Qual Type -> SpecWith ()
+cccType :: Exp r VName -> Qual Type -> SpecWith ()
 cccType e (q :=> t) = it (show e) $
   test' (toCCC e) `shouldBe` Right (q :=> t)
 
-cccDidntInline :: Exp VName -> Qual Type -> SpecWith ()
+cccDidntInline :: Exp r VName -> Qual Type -> SpecWith ()
 cccDidntInline e (q :=> t) = it ("to inline: " <> show e) $ do
   let Right (q' :=> t') = test' $ toCCC e
       (i, q'')          = partition ((== "ToInline") . predCName) q'

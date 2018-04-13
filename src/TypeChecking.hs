@@ -12,6 +12,7 @@ import           Bound
 import           Bound.Scope
 import           Control.Applicative ((<|>))
 import           Control.Lens ((<&>), makeLenses, view, (%~), (<>~))
+import           Control.Monad.Reader
 import           Control.Monad.State
 import           Control.Monad.Trans.Except
 import           Data.Bifunctor
@@ -19,6 +20,7 @@ import           Data.Bool (bool)
 import           Data.List (nub, intercalate)
 import           Data.Map (Map)
 import qualified Data.Map as M
+import           Data.Maybe (mapMaybe, listToMaybe)
 import           Data.Monoid ((<>), First (..))
 import qualified Data.Set as S
 import           Data.Traversable (for)
@@ -157,77 +159,94 @@ inferLit (LitString _) = TString
 inferLit LitUnit       = TUnit
 
 
+-- TODO(sandy): disgusting; look at the class defns instead
+getClassMethod :: ClassEnv -> VName -> Type -> Maybe Pred
+getClassMethod cenv n t
+  = listToMaybe
+  . mapMaybe (\(IsInst c _, i) -> IsInst c t <$ M.lookup n (irImpls i))
+  . M.assocs
+  $ unClassEnv cenv
+
+
 infer
     :: (Int -> VName)
+    -> ClassEnv
     -> SymTable VName
-    -> Exp VName
-    -> TI ([Pred], Type)
-infer _ _ (LDict _) =
+    -> Exp r VName
+    -> TI ([Pred], Type, Reader Subst (Exp r VName))
+infer _ _ _ (LDict _) =
   throwE "found an explicit dict while typechecking"
-infer f env (Assert e t) = do
-  (p1, t1) <- infer f env e
+infer f cenv env (Assert e t) = do
+  (p1, t1, e1) <- infer f cenv env e
   unify t t1
   s <- view tiSubst <$> get
-  pure (sub s p1, t)
-infer _ (SymTable env) (V a) =
+  pure (sub s p1, t, Assert <$> e1 <*> pure t)
+infer _ cenv (SymTable env) e@(V a) =
   case M.lookup a env of
     Nothing -> throwE $ "unbound variable: '" <> show a <> "'"
     Just sigma -> do
       (ps :=> x) <- freshInst sigma
-      pure (ps, x)
-infer f env (Let _ e1 b) = do
+      -- TODO(sandy): here we nede to do the injection
+      pure
+        . (ps, x,)
+        $ case getClassMethod cenv a $ TVar $ head $ S.toList $ free ps of
+            Just y -> do
+              s <- ask
+              pure $ e :@ LDict (sub s y)
+            Nothing -> pure e
+infer f cenv env (Let _ e1 b) = do
   name <- newVName f
   let e2 = splatter name b
-  (p1, t1) <- infer f env e1
+  (p1, t1, _) <- infer f cenv env e1
   let t'   = generalize env $ p1 :=> t1
       env' = SymTable $ M.insert name t' $ unSymTable env
-  (p2, t2) <- infer f env' e2
-  pure (p2, t2)
-infer _ _ (Lit l) = pure (mempty, inferLit l)
-infer f env (LInj which a) = do
+  (p2, t2, _) <- infer f cenv env' e2
+  pure (p2, t2, undefined)
+infer _ _ _ e@(Lit l) = pure (mempty, inferLit l, pure e)
+infer f cenv env (LInj which a) = do
   t <- newTyVar KStar
-  (p1, t1) <- infer f env a
+  (p1, t1, e) <- infer f cenv env a
   t2 <- newTyVar KStar
   unify t $ bool id flip which TProd t1 t2
-  pure (p1, t)
+  pure (p1, t, LInj <$> pure which <*> e)
 
-infer f env (LProd a b) = do
+infer f cenv env (LProd a b) = do
   t <- newTyVar KStar
-  (p1, t1) <- infer f env a
-  (p2, t2) <- infer f env b
+  (p1, t1, e1) <- infer f cenv env a
+  (p2, t2, e2) <- infer f cenv env b
   unify t $ TProd t1 t2
-  pure (p1 <> p2, t)
+  pure (p1 <> p2, t, LProd <$> e1 <*> e2)
 
-infer f env (Case e ps) = do
+infer f cenv env (Case e ps) = do
   t <- newTyVar KStar
-  (p1, te) <- infer f env e
+  (p1, te, e1) <- infer f cenv env e
   p2 <- for ps $ \(pat, pexp) -> do
     (as, ts) <- inferPattern env pat
     unify te ts
     let env' = SymTable $ M.fromList (as <&> \(i :>: x) -> (i, x))
                        <> unSymTable env
         pexp' = instantiate V pexp
-    (p2, tp) <- infer f env' pexp'
+    (p2, tp, e2) <- infer f cenv env' pexp'
     unify t tp
     pure p2
 
-  pure (p1 <> join p2, t)
+  pure (p1 <> join p2, t, undefined)
 
-infer f (SymTable env) (Lam _ x) = do
+infer f cenv (SymTable env) (Lam _ x) = do
   name <- newVName f
   tv <- newTyVar KStar
   let env' = SymTable $ env <> [(name, mkScheme tv)]
       e = splatter name x
-  (p1, t1) <- infer f env' e
-  pure (p1, TArr tv t1)
+  (p1, t1, e1) <- infer f cenv env' e
+  pure (p1, TArr tv t1, e1)
 
-infer f env exp@(e1 :@ e2) =
+infer f cenv env exp@(e1 :@ e2) =
   do
     tv <- newTyVar KStar
-    (p1, t1) <- infer f env e1
-    (p2, t2) <- infer f env e2
+    (p1, t1, e1') <- infer f cenv env e1
+    (p2, t2, e2') <- infer f cenv env e2
     unify t1 $ TArr t2 tv
-    pure (p1 <> p2, tv)
+    pure (p1 <> p2, tv, (:@) <$> e1' <*> e2')
   `catchE` \e -> throwE $
     mconcat
       [ e
@@ -255,20 +274,25 @@ inferPattern st (PCon c ps) = do
   (as, ts) <- first join . unzip <$> for ps (inferPattern st)
   -- this is gross! there is a bug here if the type constructor has constraints
   -- on it
-  (_, ct) <- infer (error "unused") st $ V c
+  (_, ct, _) <- infer (error "unused") (error "unused") st $ V c
   unify ct $ foldr (:->) t ts
   pure (as, t)
 
 
-typeInference :: ClassEnv -> Map VName Scheme -> Exp VName -> TI (Qual Type)
+typeInference
+    :: ClassEnv
+    -> Map VName Scheme
+    -> Exp r VName
+    -> TI (Qual Type, Exp r VName)
 typeInference cenv env e = do
-  (ps, t) <- infer (VName . ("!!!v" <>) . show) (SymTable env) e
+  (ps, t, e') <- infer (VName . ("!!!v" <>) . show) cenv (SymTable env) e
   s <- view tiSubst <$> get
   zs <- traverse (discharge cenv) $ sub (flatten s) ps
   let (s', ps') = mconcat zs
       s'' = flatten $ s <> s'
       (ps'' :=> t') = sub s'' $ ps' :=> t
-  errorAmbiguous $ nub ps'' :=> t'
+  (,) <$> errorAmbiguous (nub ps'' :=> t')
+      <*> pure (runReader e' s'')
 
 
 showTrace :: Show b => b -> b

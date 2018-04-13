@@ -18,7 +18,7 @@ apply :: (a -> b, a) -> b
 apply = uncurry ($)
 
 
-simplify :: Exp VName -> Exp VName
+simplify :: Exp r VName -> Exp r VName
 simplify ("." :@ "apply" :@ ("fork" :@ ("curry" :@ h) :@ g)) =
   simplify $ "." :@ h :@ ("fork" :@ "id" :@ g)
 simplify (V n)       = V n
@@ -31,7 +31,7 @@ simplify (a :@ b)    = simplify a :@ simplify b
 simplify _           = error "simplify can only be done on pointfree exps"
 
 
-toCCC :: Exp VName -> Exp VName
+toCCC :: Exp r VName -> Exp r VName
 toCCC (Lam n x) =
   case unscope x of
     V (B ())    -> "id"
@@ -83,7 +83,7 @@ toCCC (Lam n x) =
 toCCC z = toCCC $ lam "!!!!z" $ z :@ "!!!!z"
 
 
-unsafeInst1 :: Exp VName -> Exp VName -> Exp VName
+unsafeInst1 :: Exp r VName -> Exp r VName -> Exp r VName
 unsafeInst1 z (Lam _ x) = instantiate1 z x
 unsafeInst1 _ _ = error "unsafeInst1"
 

@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns      #-}
 {-# OPTIONS_GHC -Wall          #-}
@@ -15,7 +16,7 @@ import           TypeChecking
 import           Types
 
 
-extract :: Pat -> Exp VName -> Maybe [(VName, Exp VName)]
+extract :: Pat -> Exp r VName -> Maybe [(VName, Exp r VName)]
 extract (PVar i)  a      = pure $ pure (i, a)
 extract (PAs i p) a      = (:) <$> pure (i, a) <*> extract p a
 extract PWildcard _      = pure []
@@ -46,7 +47,11 @@ extract (PLit _) _       = Nothing
 
 
 
-whnf :: ClassEnv -> Map VName (Exp VName) -> Exp VName -> Exp VName
+whnf
+    :: ClassEnv
+    -> Map VName (Exp 'WithDicts VName)
+    -> Exp 'WithDicts VName
+    -> Exp 'WithDicts VName
 whnf _ std (V name) =
   case M.lookup name std of
     Just x  -> x

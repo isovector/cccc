@@ -4,7 +4,7 @@
 
 module StdLib where
 
-import Data.Bifunctor (second)
+import Data.Bifunctor (first, second)
 import Data.Map (Map)
 import Types
 import TypeChecking
@@ -96,11 +96,11 @@ classEnv = ClassEnv
 stdLib :: Map VName Scheme
 stdLib = fmap (generalize $ SymTable @VName mempty) $ fmap fst stdLib'
 
-evalLib :: Map VName (Exp VName)
+evalLib :: Map VName (Exp r VName)
 evalLib = fmap snd stdLib'
 
 
-stdLib' :: Map VName (Qual Type, Exp VName)
+stdLib' :: Map VName (Qual Type, Exp r VName)
 stdLib' =
   [ ("fst",
       ( [] :=> TProd "a" "b" :-> "a"
@@ -200,15 +200,20 @@ stdLib' =
       ))
   ]
 
+test'' :: Exp r VName -> Either String (Qual Type, Exp r VName)
+test'' = second (first normalizeType)
+       . runTI
+       . typeInference classEnv stdLib
 
-test' :: Exp VName -> Either String (Qual Type)
-test' = second normalizeType
-      . runTI
-      . typeInference classEnv stdLib
+
+test' :: Exp r VName -> Either String (Qual Type)
+test' = fmap fst . test''
 
 
-test :: Exp VName -> IO ()
+test :: Exp r VName -> IO ()
 test x =
-  case test' x of
+  case test'' x of
     Left e  -> putStrLn e
-    Right t -> putStrLn $ show t
+    Right (t, e) -> do
+      putStrLn $ show t
+      putStrLn $ show e

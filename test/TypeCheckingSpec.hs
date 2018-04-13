@@ -12,11 +12,11 @@ import Types
 fromRight (Right a) = a
 
 
-typeCheck :: Exp VName -> Qual Type -> SpecWith ()
+typeCheck :: Exp r VName -> Qual Type -> SpecWith ()
 typeCheck e t = it (show t) $ test' e `shouldBe` Right t
 
 
-typeError :: Exp VName -> SpecWith ()
+typeError :: Exp r VName -> SpecWith ()
 typeError e = it ("type error: " <> show e) $ do
   let Left z = test' e
   z `shouldContain` "types don't unify"
@@ -28,7 +28,7 @@ kindError t = it ("kind error: " <> show t) $ do
   z `shouldContain` "kind mismatch"
 
 
-ambiguous :: Exp VName -> SpecWith ()
+ambiguous :: Exp r VName -> SpecWith ()
 ambiguous e = it ("ambiguous: " <> show e) $ do
   let Left z = test' e
   z `shouldContain` "is ambiguous"

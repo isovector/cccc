@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveFoldable             #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveTraversable          #-}
@@ -29,6 +30,13 @@ import qualified Data.Set as S
 import           GHC.Exts (IsString (..))
 import           Prelude hiding (exp)
 import           Text.Show.Deriving (deriveShow1)
+import           Unsafe.Coerce (unsafeCoerce)
+
+
+------------------------------------------------------------------------------
+-- | 'r' is a phantom, but GHC thinks it's nominal...
+boo :: Exp r a -> Exp r' a
+boo = unsafeCoerce
 
 
 infixl 9 :@@
@@ -40,7 +48,6 @@ data Type
   | TVoid
   | Type :@@ Type
   deriving (Eq, Ord)
-
 
 
 infixr 9 :>>
@@ -216,31 +223,35 @@ newtype CName = CName { unCName :: String }
   deriving (Eq, Ord, IsString)
 
 
+data ExpLife
+  = Source
+  | WithDicts
+
 infixl 9 :@
-data Exp a
+data Exp (r :: ExpLife) a
   = V a
   | Lit Lit
-  | LProd (Exp a) (Exp a)
-  | LInj Bool (Exp a)
+  | LProd (Exp r a) (Exp r a)
+  | LInj Bool (Exp r a)
   | LDict Pred
-  | Exp a :@ Exp a
-  | Lam VName (Scope () Exp a)
-  | Let VName (Exp a) (Scope () Exp a)
-  | Case (Exp a) [(Pat, Scope VName Exp a)]
-  | Assert (Exp a) Type
+  | Exp r a :@ Exp r a
+  | Lam VName (Scope () (Exp r) a)
+  | Let VName (Exp r a) (Scope () (Exp r) a)
+  | Case (Exp r a) [(Pat, Scope VName (Exp r) a)]
+  | Assert (Exp r a) Type
   deriving (Functor, Foldable, Traversable)
 
 
-pattern LInt :: Int -> Exp a
+pattern LInt :: Int -> Exp r a
 pattern LInt i = Lit (LitInt i)
 
-pattern LBool :: Bool -> Exp a
+pattern LBool :: Bool -> Exp r a
 pattern LBool i = Lit (LitBool i)
 
-pattern LString :: String -> Exp a
+pattern LString :: String -> Exp r a
 pattern LString i = Lit (LitString i)
 
-pattern LUnit :: Exp a
+pattern LUnit :: Exp r a
 pattern LUnit = Lit LitUnit
 
 
@@ -258,16 +269,16 @@ instance Show Lit where
   show LitUnit = "unit"
 
 
-instance IsString a => IsString (Exp a) where
+instance IsString a => IsString (Exp r a) where
   fromString = V . fromString
 
 
-instance Applicative Exp where
+instance Applicative (Exp r) where
   pure  = V
   (<*>) = ap
 
 
-instance Monad Exp where
+instance Monad (Exp r) where
   return       = pure
   V a        >>= f = f a
   Lit  i     >>= _ = Lit i
@@ -292,12 +303,12 @@ instance Show VName where
 deriveEq1 ''Exp
 deriveShow1 ''Exp
 
-deriving instance Eq a   => Eq (Exp a)
-deriving instance {-# OVERLAPPABLE #-} Show a => Show (Exp a)
+deriving instance (Eq a)   => Eq (Exp r a)
+deriving instance {-# OVERLAPPABLE #-} (Show a) => Show (Exp r a)
 deriving instance Show Scheme
 deriving instance Show Assump
 
-instance Show (Exp VName) where
+instance Show (Exp r VName) where
   showsPrec x (V a) =
     showParen (all ((||) <$> isSymbol <*> isPunctuation) $ unVName a)
       $ showsPrec x a
@@ -447,7 +458,7 @@ instance Monoid Subst where
 
 data InstRep = InstRep
   { irQuals :: Qual ()
-  , irImpls :: Map VName (Exp VName)
+  , irImpls :: Map VName (Exp 'WithDicts VName)
   } deriving (Eq, Show)
 
 
@@ -483,10 +494,10 @@ pattern CClosed :: String -> Pred
 pattern CClosed t = IsInst "Closed" (TVar (TName t K2))
 
 
-lam :: VName -> Exp VName -> Exp VName
+lam :: VName -> Exp r VName -> Exp r VName
 lam x e = Lam x (abstract1 x e)
 
-case_ :: Exp VName -> [(Pat, Exp VName)] -> Exp VName
+case_ :: Exp r VName -> [(Pat, Exp r VName)] -> Exp r VName
 case_ e ps
   = Case e
   . flip fmap ps
@@ -500,6 +511,6 @@ pVars (PAs i p)  = i : pVars p
 pVars (PCon _ p) = foldMap pVars p
 pVars (PLit _)   = []
 
-let_ :: VName -> Exp VName -> Exp VName -> Exp VName
+let_ :: VName -> Exp r VName -> Exp r VName -> Exp r VName
 let_ x v = Let x v . abstract1 x
 
