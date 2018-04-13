@@ -4,7 +4,6 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
-{-# LANGUAGE OverloadedLists            #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE StandaloneDeriving         #-}
@@ -158,6 +157,17 @@ data Pat
   deriving (Eq, Ord)
 
 
+instance IsString Pat where
+  fromString = PVar . fromString
+
+
+pattern PFalse :: Pat
+pattern PFalse = PCon "inl" [PWildcard]
+
+pattern PTrue :: Pat
+pattern PTrue = PCon "inr" [PWildcard]
+
+
 instance Show Pat where
   showsPrec _ PWildcard  = showString "_"
   showsPrec _ (PVar x)   = showString $ show x
@@ -210,6 +220,7 @@ data Exp a
   | Lit Lit
   | LProd (Exp a) (Exp a)
   | LInj Bool (Exp a)
+  | LDict Pred
   | Exp a :@ Exp a
   | Lam VName (Scope () Exp a)
   | Let VName (Exp a) (Scope () Exp a)
@@ -222,7 +233,7 @@ pattern LInt :: Int -> Exp a
 pattern LInt i = Lit (LitInt i)
 
 pattern LBool :: Bool -> Exp a
-pattern LBool i = Lit (LitBool i)
+pattern LBool i = LInj i LUnit
 
 pattern LUnit :: Exp a
 pattern LUnit = Lit LitUnit
@@ -230,13 +241,11 @@ pattern LUnit = Lit LitUnit
 
 data Lit
   = LitInt Int
-  | LitBool Bool
   | LitUnit
   deriving (Eq, Ord)
 
 instance Show Lit where
   show (LitInt i) = show i
-  show (LitBool i) = show i
   show LitUnit = "unit"
 
 
@@ -253,6 +262,7 @@ instance Monad Exp where
   return       = pure
   V a        >>= f = f a
   Lit  i     >>= _ = Lit i
+  LDict a    >>= _ = LDict a
   LProd a b  >>= f = LProd (a >>= f) (b >>= f)
   LInj x a   >>= f = LInj x (a >>= f)
   (x :@ y)   >>= f = (x >>= f) :@ (y >>= f)
@@ -282,6 +292,11 @@ instance Show (Exp VName) where
   showsPrec x (V a) =
     showParen (all ((||) <$> isSymbol <*> isPunctuation) $ unVName a)
       $ showsPrec x a
+  showsPrec x (V n :@ LDict (IsInst _ t)) = showParen (x >= 10)
+    $ showsPrec 0 (V n)
+    . showString " @"
+    . showsPrec 10 t
+  showsPrec _ (LDict _) = showString "RAWDICT"
   showsPrec x (V "." :@ a :@ b) =
     showParen (x >= 9)
       $ showsPrec 9 a
@@ -370,12 +385,12 @@ instance Types Assump where
 
 
 instance Types Type where
-  free (TVar a)    = [a]
-  free (TCon _)    = [] -- ?
-  free TInt        = []
-  free TBool       = []
-  free TUnit       = []
-  free TVoid       = []
+  free (TVar a)    = S.fromList [a]
+  free (TCon _)    = S.fromList [] -- ?
+  free TInt        = S.fromList []
+  free TBool       = S.fromList []
+  free TUnit       = S.fromList []
+  free TVoid       = S.fromList []
   free (a :@@ b)   = free a <> free b
 
   sub s (TVar n)    = maybe (TVar n) id $ M.lookup n $ unSubst s
@@ -421,9 +436,19 @@ instance Monoid Subst where
     Subst $ fmap (sub s1) s2 <> unSubst s1
 
 
+data InstRep = InstRep
+  { irQuals :: Qual ()
+  , irImpls :: Map VName (Exp VName)
+  } deriving (Eq, Show)
+
+
 newtype ClassEnv = ClassEnv
-  { unClassEnv :: Map (Qual Pred) (Map VName (Exp VName))
+  { unClassEnv :: Map Pred InstRep
   } deriving (Eq, Show, Monoid)
+
+
+getQuals :: ClassEnv -> [Qual Pred]
+getQuals = fmap (\(a, b) -> a <$ irQuals b) . M.assocs . unClassEnv
 
 
 newtype SymTable a = SymTable

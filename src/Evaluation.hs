@@ -9,6 +9,7 @@ import           Control.Lens ((<&>))
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Maybe (mapMaybe)
+import           StdLib
 import           TypeChecking
 import           Types
 
@@ -25,12 +26,12 @@ extract (PCon "*" _) _   = error "bad number of pattern ctors to *"
 extract (PCon "inl" [p])
         (LInj False a)   = extract p a
 extract (PCon "inl" [_])
-        (LInj True _)    = Nothing
+        _                = Nothing
 extract (PCon "inl" _) _ = error "bad number of pattern ctors to inl"
 extract (PCon "inr" [p])
         (LInj True a)    = extract p a
 extract (PCon "inr" [_])
-        (LInj False _)   = Nothing
+        _                = Nothing
 extract (PCon "inr" _) _ = error "bad number of pattern ctors to inr"
 extract (PCon _ _) _     = error "bad constructor!"
 extract (PLit l) (Lit l')
@@ -40,24 +41,27 @@ extract (PLit _) _       = Nothing
 
 
 
-whnf :: Map VName (Exp VName) -> Exp VName -> Exp VName
-whnf std (V name) =
+whnf :: ClassEnv -> Map VName (Exp VName) -> Exp VName -> Exp VName
+whnf _ std (V name) =
   case M.lookup name std of
     Just x  -> x
     Nothing -> V name
-whnf std (f :@ a) =
-  case whnf std f of
-    Lam _ b -> whnf std (instantiate1 a b)
+whnf cenv std (V m :@ LDict t) =
+  whnf cenv std $ irImpls (unClassEnv cenv M.! t) M.! m
+whnf cenv std (f :@ a) =
+  case whnf cenv std f of
+    Lam _ b -> whnf cenv std (instantiate1 a b)
     f' -> f' :@ a
-whnf _ z@(Lit _)      = z
-whnf _ z@(LProd _ _)  = z
-whnf _ z@(LInj _ _)   = z
-whnf std (Let _ v e)  = whnf std $ instantiate1 v e
-whnf std (Assert e _) = whnf std e
-whnf std (Case e ps)  =
-  let e'              = whnf std e
-   in whnf std $ head $ flip mapMaybe ps $ \(p, v) ->
+whnf _ _ z@(Lit _)      = z
+whnf _ _ z@(LProd _ _)  = z
+whnf _ _ z@(LInj _ _)   = z
+whnf cenv std (Let _ v e)  = whnf cenv std $ instantiate1 v e
+whnf cenv std (Assert e _) = whnf cenv std e
+whnf cenv std (Case e ps)  =
+  let e'              = whnf cenv std e
+   in whnf cenv std $ head $ flip mapMaybe ps $ \(p, v) ->
      extract p e' <&> \(M.fromList -> vs) ->
        instantiate (vs M.!) v
-whnf _ z@(Lam _ _)    = z
+whnf _ _ z@(Lam _ _)    = z
+whnf _ _ z@(LDict _)    = z
 

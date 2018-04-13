@@ -12,33 +12,73 @@ import TypeChecking
 
 classEnv :: ClassEnv
 classEnv = ClassEnv
-  [ ( [] :=> IsInst "Eq" TInt
-    , []
+  [ ( IsInst "Eq" TBool
+    , InstRep ([] :=> ())
+    $ [ ( "=="
+        , lam "x" $ lam "y" $
+            case_ "x"
+              [ ( PFalse
+                , case_ "y"
+                  [ ( PFalse
+                    , LBool True
+                    )
+                  , ( PWildcard
+                    , LBool False
+                    )
+                  ]
+                )
+              , ( PTrue
+                , case_ "y"
+                  [ ( PTrue
+                    , LBool True
+                    )
+                  , ( PWildcard
+                    , LBool False
+                    )
+                  ]
+                )
+              ]
+        )
+      ]
     )
-  , ( [] :=> IsInst "Eq" TUnit
-    , []
+  , ( IsInst "Eq" TUnit
+    , InstRep ([] :=> ())
+    $ [ ( "=="
+        , lam "x" $ lam "y" $ LBool True
+        )
+      ]
     )
-  , ( [] :=> IsInst "Eq" TVoid
-    , []
+  , ( IsInst "Eq" TVoid
+    , InstRep ([] :=> ())
+    $ [ ( "==", "undefined" )
+      ]
     )
-  , ( [IsInst "Eq" "a", IsInst "Eq" "b"] :=> IsInst "Eq" (TProd "a" "b")
-    , []
+  , ( IsInst "Eq" (TProd "a" "b")
+    , InstRep ([IsInst "Eq" "a", IsInst "Eq" "b"] :=> ())
+    $ [ ( "==", "undefined" )
+      ]
     )
-  , ( [IsInst "Eq" "a", IsInst "Eq" "b"] :=> IsInst "Eq" (TSum "a" "b")
-    , []
+  , ( IsInst "Eq" (TSum "a" "b")
+    , InstRep ([IsInst "Eq" "a", IsInst "Eq" "b"] :=> ())
+    $ [ ( "==", "undefined" )
+      ]
     )
 
-  , ( [] :=> IsInst "Category"  TArrCon
-    , []
+  , ( IsInst "Category" TArrCon
+    , InstRep ([] :=> ())
+    $ []
     )
-  , ( [] :=> IsInst "Cartesian" TArrCon
-    , []
+  , ( IsInst "Cartesian" TArrCon
+    , InstRep ([] :=> ())
+    $ []
     )
-  , ( [] :=> IsInst "Terminal"  TArrCon  -- const
-    , []
+  , ( IsInst "Terminal" TArrCon  -- const
+    , InstRep ([] :=> ())
+    $ []
     )
-  , ( [] :=> IsInst "Closed"    TArrCon
-    , []
+  , ( IsInst "Closed" TArrCon
+    , InstRep ([] :=> ())
+    $ []
     )
   ]
 
