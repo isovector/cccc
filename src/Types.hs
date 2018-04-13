@@ -422,8 +422,8 @@ instance Monoid Subst where
 
 
 newtype ClassEnv = ClassEnv
-  { unClassEnv :: Set (Qual Pred)
-  } deriving (Eq, Ord, Show, Monoid)
+  { unClassEnv :: Map (Qual Pred) (Map VName (Exp VName))
+  } deriving (Eq, Show, Monoid)
 
 
 newtype SymTable a = SymTable
@@ -467,5 +467,5 @@ pVars (PCon _ p) = foldMap pVars p
 pVars (PLit _)   = []
 
 let_ :: VName -> Exp VName -> Exp VName -> Exp VName
-let_ x v e = Let x v (abstract1 x e)
+let_ x v = Let x v . abstract1 x
 

@@ -4,11 +4,12 @@
 module CCCSpec where
 
 import CCC
+import Data.List (partition)
+import Data.Monoid ((<>))
+import StdLib
 import Test.Hspec
 import TypeChecking
 import Types
-import Data.Monoid ((<>))
-import Data.List (partition)
 
 fromRight (Right a) = a
 

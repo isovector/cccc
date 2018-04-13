@@ -3,10 +3,11 @@
 
 module TypeCheckingSpec where
 
+import Data.Monoid ((<>))
+import StdLib
 import Test.Hspec
 import TypeChecking
 import Types
-import Data.Monoid ((<>))
 
 fromRight (Right a) = a
 

@@ -4,11 +4,12 @@
 module EvalSpec where
 
 import qualified Data.Map as M
-import Test.Hspec
-import TypeChecking
-import Evaluation
-import Types
-import Data.Monoid ((<>))
+import           Data.Monoid ((<>))
+import           Evaluation
+import           StdLib
+import           Test.Hspec
+import           TypeChecking
+import           Types
 
 eval :: Exp VName -> Exp VName -> SpecWith ()
 eval v e = it (show e <> " |=> " <> show v) $
