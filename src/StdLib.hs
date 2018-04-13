@@ -53,6 +53,11 @@ classEnv = ClassEnv
     $ [ ( "==", "undefined" )
       ]
     )
+  , ( IsInst "Eq" TString
+    , InstRep ([] :=> ())
+    $ [ ( "==", "undefined" )
+      ]
+    )
   , ( IsInst "Eq" TVoid
     , InstRep ([] :=> ())
     $ [ ( "==", "undefined" )
@@ -185,9 +190,13 @@ stdLib' =
           :=> ("a" :-> "b") :-> TSum (TCat "k" "a" "b") TUnit
       , undefined
       ))
+  , ("error",
+      ( [] :=> TString :-> "a"
+      , undefined
+      ))
   , ("undefined",
       ( [] :=> "a"
-      , case_ "unit" []
+      , "error" :@ LString "undefined"
       ))
   ]
 

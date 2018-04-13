@@ -13,16 +13,20 @@ import           Test.Hspec
 import           TypeChecking
 import           Types
 
+
 eval :: Exp VName -> Exp VName -> SpecWith ()
 eval v e = it (show e <> " |=> " <> show v) $
   whnf classEnv evalLib e `shouldBe` v
+
 
 notEq :: Exp VName -> Exp VName -> SpecWith ()
 notEq a b = it (show a <> " <=/=> " <> show b) $
   whnf classEnv evalLib a `shouldNotBe` whnf classEnv evalLib b
 
+
 getDef :: VName -> Exp VName
 getDef n = fmap snd stdLib' M.! n
+
 
 spec :: Spec
 spec = do

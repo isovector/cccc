@@ -83,9 +83,11 @@ pattern TArr a b = TArrCon :@@ a :@@ b
 pattern TArrCon :: Type
 pattern TArrCon = TCon (TName "->" K2)
 
-
 pattern TBool :: Type
 pattern TBool = TSum TUnit TUnit
+
+pattern TString :: Type
+pattern TString = TCon (TName "String" KStar)
 
 
 pattern TCat :: String -> Type -> Type -> Type
@@ -235,6 +237,9 @@ pattern LInt i = Lit (LitInt i)
 pattern LBool :: Bool -> Exp a
 pattern LBool i = Lit (LitBool i)
 
+pattern LString :: String -> Exp a
+pattern LString i = Lit (LitString i)
+
 pattern LUnit :: Exp a
 pattern LUnit = Lit LitUnit
 
@@ -243,11 +248,13 @@ data Lit
   = LitInt Int
   | LitUnit
   | LitBool Bool
+  | LitString String
   deriving (Eq, Ord)
 
 instance Show Lit where
   show (LitInt i) = show i
   show (LitBool i) = show i
+  show (LitString i) = show i
   show LitUnit = "unit"
 
 

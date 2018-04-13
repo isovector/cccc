@@ -151,9 +151,10 @@ splatter = splat pure . const . pure
 
 
 inferLit :: Lit -> Type
-inferLit (LitInt _)  = TInt
-inferLit (LitBool _) = TBool
-inferLit LitUnit     = TUnit
+inferLit (LitInt _)    = TInt
+inferLit (LitBool _)   = TBool
+inferLit (LitString _) = TString
+inferLit LitUnit       = TUnit
 
 
 infer

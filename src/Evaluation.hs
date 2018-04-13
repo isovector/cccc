@@ -9,6 +9,7 @@ import           Control.Lens ((<&>))
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Maybe (mapMaybe)
+import           Data.Monoid ((<>))
 import           StdLib
 import           TypeChecking
 import           Types
@@ -50,6 +51,8 @@ whnf _ std (V name) =
   case M.lookup name std of
     Just x  -> x
     Nothing -> V name
+whnf cenv std (V "error" :@ a) =
+  error $ "error: " <> show (whnf cenv std a)
 whnf cenv std (V m :@ LDict t) =
   whnf cenv std $ irImpls (unClassEnv cenv M.! t) M.! m
 whnf cenv std (f :@ a) =
