@@ -25,7 +25,8 @@ simplify (V n)       = V n
 simplify (LInt n)    = LInt n
 simplify (LBool n)   = LBool n
 simplify (LProd a b) = LProd (simplify a) (simplify b)
-simplify (LInj a b)  = LInj a (simplify b)
+simplify (LInl a)    = LInl (simplify a)
+simplify (LInr a)    = LInr (simplify a)
 simplify LUnit       = LUnit
 simplify (a :@ b)    = simplify a :@ simplify b
 simplify _           = error "simplify can only be done on pointfree exps"
@@ -47,6 +48,7 @@ toCCC (Lam n x) =
         _ -> \z -> ("." :@ z :@ "shouldInline")
       ) "const" :@ V a
     V (F _)     -> error "this should never be hit"
+    LProd a b  -> anonLam $ (V $ F ",") :@ a :@ b
     u :@ v      ->
       foldl1 (:@)
         [ "."
@@ -71,8 +73,9 @@ toCCC (Lam n x) =
     LInt i     -> "const" :@ LInt i
     LBool b    -> "const" :@ LBool b
     -- LProd a b  -> LProd (anonLam a) (anonLam b)
-    LProd a b  -> anonLam $ (V $ F ",") :@ a :@ b
-    LInj a b   -> anonLam $ (V $ F $ bool "inl" "inr" a) :@ b
+    -- TODO(sandy): these are icky
+    LInl b   -> anonLam $ (V $ F $ "inl") :@ b
+    LInr b   -> anonLam $ (V $ F $ "inr") :@ b
     LUnit      -> "const" :@ LUnit
     -- TODO(sandy): is this right? it discards info
     Assert a _ -> anonLam a

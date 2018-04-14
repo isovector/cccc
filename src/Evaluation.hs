@@ -6,37 +6,33 @@ module Evaluation where
 
 import           Bound
 import           Control.Lens ((<&>))
+import           Control.Monad (join)
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Maybe (mapMaybe)
+import           Data.Monoid ((<>))
 import           TypeChecking
 import           Types
+
+
+unfurrow :: Exp a  -> Maybe (VName, [Exp a])
+unfurrow = go []
+  where
+    go acc (LCon a) = pure (a, acc)
+    go acc (a :@ b) = go (b : acc) a
+    go _ _ = Nothing
 
 
 extract :: Pat -> Exp VName -> Maybe [(VName, Exp VName)]
 extract (PVar i)  a      = pure $ pure (i, a)
 extract (PAs i p) a      = (:) <$> pure (i, a) <*> extract p a
 extract PWildcard _      = pure []
-extract (PCon "*" [p1, p2])
-        (LProd a b)      = (++) <$> extract p1 a <*> extract p2 b
-extract (PCon "*" [_, _])
-        _                = Nothing
-extract (PCon "*" _) _   = error "bad number of pattern ctors to *"
-extract (PCon "inl" [p])
-        (LInj False a)   = extract p a
-extract (PCon "inl" [p])
-        (LBool False)   = extract p LUnit
-extract (PCon "inl" [_])
-        _                = Nothing
-extract (PCon "inl" _) _ = error "bad number of pattern ctors to inl"
-extract (PCon "inr" [p])
-        (LInj True a)    = extract p a
-extract (PCon "inr" [p])
-        (LBool True)     = extract p LUnit
-extract (PCon "inr" [_])
-        (LInj False _)   = Nothing
-extract (PCon "inr" _) _ = error "bad number of pattern ctors to inr"
-extract (PCon _ _) _     = error "bad constructor!"
+extract (PCon c ps) a
+  | Just (c', as) <- unfurrow a
+  , c == c'              = if length ps /= length as
+                              then error $ "bad number of pattern ctors to " <> show c
+                              else fmap join . traverse (uncurry extract) $ zip ps as
+extract (PCon _ _) _     = Nothing
 extract (PLit l) (Lit l')
     | l == l'            = Just []
     | otherwise          = Nothing
@@ -49,13 +45,12 @@ whnf std (V name) =
   case M.lookup name std of
     Just x  -> x
     Nothing -> V name
+whnf _ z@(LCon _) = z
 whnf std (f :@ a) =
   case whnf std f of
     Lam _ b -> whnf std (instantiate1 a b)
     f' -> f' :@ a
 whnf _ z@(Lit _)      = z
-whnf _ z@(LProd _ _)  = z
-whnf _ z@(LInj _ _)   = z
 whnf std (Let _ v e)  = whnf std $ instantiate1 v e
 whnf std (Assert e _) = whnf std e
 whnf std (Case e ps)  =

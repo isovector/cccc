@@ -182,12 +182,9 @@ infer f env (Let _ e1 b) = do
   (p2, t2) <- infer f env' e2
   pure (p2, t2)
 infer _ _ (Lit l) = pure (mempty, inferLit l)
-infer f env (LInj which a) = do
-  t <- newTyVar KStar
-  (p1, t1) <- infer f env a
-  t2 <- newTyVar KStar
-  unify t $ bool id flip which TProd t1 t2
-  pure (p1, t)
+
+-- TODO(sandy): maybe this is wrong?
+infer f env (LCon a) = infer f env (V a)
 
 infer f env (LProd a b) = do
   t <- newTyVar KStar

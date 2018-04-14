@@ -222,8 +222,7 @@ infixl 9 :@
 data Exp a
   = V a
   | Lit Lit
-  | LProd (Exp a) (Exp a)
-  | LInj Bool (Exp a)
+  | LCon VName
   | Exp a :@ Exp a
   | Lam VName (Scope () Exp a)
   | Let VName (Exp a) (Scope () Exp a)
@@ -271,14 +270,23 @@ instance Applicative Exp where
 instance Monad Exp where
   return       = pure
   V a        >>= f = f a
+  LCon a     >>= _ = LCon a
   Lit  i     >>= _ = Lit i
-  LProd a b  >>= f = LProd (a >>= f) (b >>= f)
-  LInj x a   >>= f = LInj x (a >>= f)
   (x :@ y)   >>= f = (x >>= f) :@ (y >>= f)
   Lam n e    >>= f = Lam n (e >>>= f)
   Let n bs b >>= f = Let n (bs >>= f) (b >>>= f)
   Assert e t >>= f = Assert (e >>= f) t
   Case e p   >>= f = Case (e >>= f) $ fmap (second (>>>= f)) p
+
+
+pattern LProd :: Exp a -> Exp a -> Exp a
+pattern LProd a b = LCon "," :@ a :@ b
+
+pattern LInl :: Exp a -> Exp a
+pattern LInl a = LCon "inl" :@ a
+
+pattern LInr :: Exp a -> Exp a
+pattern LInr a = LCon "inr" :@ a
 
 
 newtype VName = VName { unVName :: String }
@@ -299,6 +307,9 @@ deriving instance Show Assump
 
 instance Show (Exp VName) where
   showsPrec x (V a) =
+    showParen (all ((||) <$> isSymbol <*> isPunctuation) $ unVName a)
+      $ showsPrec x a
+  showsPrec x (LCon a) =
     showParen (all ((||) <$> isSymbol <*> isPunctuation) $ unVName a)
       $ showsPrec x a
   showsPrec x (V "." :@ a :@ b) =
@@ -328,10 +339,6 @@ instance Show (Exp VName) where
     $ showsPrec 0 a
     . showString ", "
     . showsPrec 0 b
-  showsPrec x (LInj b v) = showParen (x >= 10)
-    $ showString (bool "inl" "inr" b)
-    . showString " "
-    . showsPrec 10 v
   showsPrec x (Assert e t) = showParen (x > 0)
     $ showsPrec 0 e
     . showString " :: "
@@ -441,12 +448,12 @@ instance Monoid Subst where
 
 
 newtype ClassEnv = ClassEnv
-  { unClassEnv :: Map Pred InstRep
+  { unClassEnv :: Map Pred (InstRep ())
   } deriving (Eq, Show, Monoid)
 
 
-data InstRep = InstRep
-  { irQuals :: Qual ()
+data InstRep a = InstRep
+  { irQuals :: Qual a
   , irImpls :: Map VName (Exp VName)
   } deriving (Eq, Show)
 
