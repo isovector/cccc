@@ -112,6 +112,14 @@ spec = do
 
     typeCheck (LString "hello") $ [] :=> TString
 
+    let getMethod m c t =
+          (V $ VName $ "@" <> m) :@ V (VName $ getDict $ IsInst c t)
+
+    typeCheck (getMethod "==" "Eq" TBool) $
+      [] :=> TBool :-> TBool :-> TBool
+    typeCheck (getMethod "==" "Eq" TInt) $
+      [] :=> TInt :-> TInt :-> TBool
+
     typeError $ "fst" :@ "inl"
     typeError $
       case_ "unit"

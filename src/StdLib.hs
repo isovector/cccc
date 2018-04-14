@@ -14,6 +14,18 @@ import           Types
 import           Utils
 
 
+classes :: [Class]
+classes =
+  [ Class ["a"]
+          "Eq"
+        $ M.fromList [("==", [] :=> "a" :-> "a" :-> TBool)]
+  , Class ["a"] "Category" []
+  ]
+
+classGDCs :: Map CName (GenDataCon, [(VName, (Qual Type, Exp VName))])
+classGDCs = M.fromList $ zip (fmap cName classes) $ fmap buildDictType classes
+
+
 classEnv :: ClassEnv
 classEnv = ClassEnv
   [ ( IsInst "Eq" TBool
@@ -79,18 +91,6 @@ classEnv = ClassEnv
     )
 
   , ( IsInst "Category" TArrCon
-    , InstRep ([] :=> ())
-    $ []
-    )
-  , ( IsInst "Cartesian" TArrCon
-    , InstRep ([] :=> ())
-    $ []
-    )
-  , ( IsInst "Terminal" TArrCon  -- const
-    , InstRep ([] :=> ())
-    $ []
-    )
-  , ( IsInst "Closed" TArrCon
     , InstRep ([] :=> ())
     $ []
     )
@@ -193,7 +193,13 @@ stdLib' =
   ] <>
   M.fromList ( join $ fmap (\(gdc, zs) -> toStdLib gdc : zs) $
     [ buildRecord "," [("fst", "a"), ("snd", "b")] Nothing
-    ])
+    ] <> fmap buildDictType classes
+    )
+  <> M.fromList
+      (fmap (\c@(InstRep (_ :=> IsInst cname _) _) ->
+            buildDict (fst $ classGDCs M.! cname) c)
+        $ getInstReps classEnv)
+
 
 test' :: Exp VName -> Either String (Qual Type)
 test' = second normalizeType

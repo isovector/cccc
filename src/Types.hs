@@ -167,11 +167,11 @@ instance IsString Pat where
 
 
 pattern PFalse :: Pat
-pattern PFalse = PCon "inl" [PWildcard]
+pattern PFalse = PLit (LitBool False)
 
 
 pattern PTrue :: Pat
-pattern PTrue = PCon "inr" [PWildcard]
+pattern PTrue = PLit (LitBool True)
 
 
 instance Show Pat where
@@ -217,7 +217,8 @@ data Pred = IsInst
 
 
 newtype CName = CName { unCName :: String }
-  deriving (Eq, Ord, IsString)
+  deriving (Eq, Ord, IsString, Monoid)
+
 
 
 infixl 9 :@
@@ -292,7 +293,7 @@ pattern LInr a = LCon "inr" :@ a
 
 
 newtype VName = VName { unVName :: String }
-  deriving (Eq, Ord, IsString)
+  deriving (Eq, Ord, IsString, Monoid)
 
 
 instance Show VName where
@@ -379,6 +380,11 @@ instance Show CName where
   show = unCName
 
 
+data Class = Class
+  { cVars    :: [TName]
+  , cName    :: CName
+  , cMethods :: Map VName (Qual Type)
+  } deriving (Eq, Ord, Show)
 
 
 pattern (:->) :: Type -> Type -> Type
@@ -456,11 +462,14 @@ newtype ClassEnv = ClassEnv
 data InstRep a = InstRep
   { irQuals :: Qual a
   , irImpls :: Map VName (Exp VName)
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Functor)
 
 
 getQuals :: ClassEnv -> [Qual Pred]
 getQuals = fmap (\(a, b) -> a <$ irQuals b) . M.assocs . unClassEnv
+
+getInstReps :: ClassEnv -> [InstRep Pred]
+getInstReps = fmap (\(p, i) -> p <$ i) . M.assocs . unClassEnv
 
 
 newtype SymTable a = SymTable

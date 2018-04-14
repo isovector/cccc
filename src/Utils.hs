@@ -7,8 +7,10 @@ module Utils where
 import           Control.Lens ((<&>), makeLenses)
 import           Control.Monad.State
 import           Control.Monad.Trans.Except
+import           Data.Bifunctor (first, second)
 import qualified Data.Map as M
 import           Data.Monoid ((<>))
+import qualified Data.Set as S
 import           Data.Traversable (for)
 import           Debug.Trace  (trace)
 import           Types
@@ -85,7 +87,9 @@ buildDataCon
 buildDataCon n@(VName s) ts t' =
   let ks = fmap (either error id . runTI . kind) ts
       k  = foldr (:>>) KStar ks
-      tr = maybe (foldl (:@@) (TCon $ TName s k) ts) id t'
+      tr = maybe (foldl (:@@) (TCon $ TName s k)
+         . fmap TVar
+         $ S.toList $ free ts) id t'
       t  = foldr (:->) tr ts
       ls = fmap fst $ zip (fmap VName letters) ts
    in GenDataCon n ([] :=> t) ([] :=> tr)
@@ -112,9 +116,35 @@ buildRecord n fs t =
           $ [(PCon n p, "p")]
 
 
-buildDict :: InstRep a -> Exp VName
-buildDict ir =
-  lam "m" $ case_ "m" $
-    (M.assocs $ irImpls ir) <&> \(VName m, e) ->
-      (PLit (LitString m), e)
+getDictName :: CName -> String
+getDictName n = "@" <> unCName n
+
+getDict :: Pred -> String
+getDict (IsInst c t) = "@" <> show c <> "@" <> show t
+
+
+buildDictType
+    :: Class
+    -> (GenDataCon, [(VName, (Qual Type, Exp VName))])
+buildDictType (Class _ n ms) =
+  buildRecord
+    (VName name)
+    -- TODO(sandy): there is a bug here if there is a constraint on the method
+    (fmap (second unqualType . first ("@" <>)) $ M.assocs ms)
+    Nothing
+    -- (Just $ TCon (TName name KStar))
+  where
+    name = getDictName n
+
+
+buildDict :: GenDataCon -> InstRep Pred -> (VName, (Qual Type, Exp VName))
+buildDict gdc (InstRep (qs :=> i@(IsInst c t)) impls) =
+    (VName dict,)
+      -- TODO(sandy): buggy; doesn't do nested dicts
+      -- TODO(sandy): also buggy. we should just run the type checker on this
+      $ (sub (Subst $ M.fromList [("a", t)] ) $ gdcFinalType gdc,)
+      $ foldl (:@) (LCon (VName dname)) $ M.elems impls
+  where
+    dict = getDict i
+    dname = getDictName c
 
