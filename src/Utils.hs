@@ -8,6 +8,7 @@ import           Control.Lens ((<&>), makeLenses)
 import           Control.Monad.State
 import           Control.Monad.Trans.Except
 import qualified Data.Map as M
+import           Data.Monoid ((<>))
 import           Data.Traversable (for)
 import           Debug.Trace  (trace)
 import           Types
@@ -68,21 +69,47 @@ kind (a :@@ b) = do
     KStar -> kerr KStar
 
 
+data GenDataCon = GenDataCon
+  { gdcName      :: VName
+  , gdcConType   :: Qual Type
+  , gdcFinalType :: Qual Type
+  , gdcCon       :: Exp VName
+  } deriving (Eq, Show)
+
+
 buildDataCon
     :: VName
     -> [Type]
     -> Maybe Type
-    -> (Qual Type, Exp VName)
+    -> GenDataCon
 buildDataCon n@(VName s) ts t' =
   let ks = fmap (either error id . runTI . kind) ts
       k  = foldr (:>>) KStar ks
-      tr = TCon $ TName s k
-      t  = foldr (:->) (maybe (foldl (:@@) tr ts) id t') ts
+      tr = maybe (foldl (:@@) (TCon $ TName s k) ts) id t'
+      t  = foldr (:->) tr ts
       ls = fmap fst $ zip (fmap VName letters) ts
-   in ([] :=> t,)
+   in GenDataCon n ([] :=> t) ([] :=> tr)
     . foldr lam
             (foldl (:@) (LCon n) $ fmap V ls)
     $ ls
+
+
+buildRecord
+    :: VName
+    -> [(VName, Type)]
+    -> Maybe Type
+    -> (GenDataCon, [(VName, (Qual Type, Exp VName))])
+buildRecord n fs t =
+  let gen@(GenDataCon _ _ t' _) = buildDataCon n (fmap snd fs) t
+   in (gen, )
+    $ zip [0..] fs <&> \(fn, (f, ft)) ->
+        let p = take (length fs) $ putBack $ splitAt fn $ repeat PWildcard
+            putBack (as, bs) = as <> [PVar "p"] <> bs
+         in (f,)
+          $ ([] :=> unqualType t' :-> ft,)
+          $ lam "z"
+          $ case_ "z"
+          $ [(PCon n p, "p")]
 
 
 buildDict :: InstRep a -> Exp VName

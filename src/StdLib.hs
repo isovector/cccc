@@ -4,11 +4,14 @@
 
 module StdLib where
 
-import Data.Bifunctor (first, second)
-import Data.Map (Map)
-import Types
-import TypeChecking
-import Utils
+import           Control.Monad (join)
+import           Data.Bifunctor (first, second)
+import           Data.Map (Map)
+import qualified Data.Map as M
+import           Data.Monoid ((<>))
+import           TypeChecking
+import           Types
+import           Utils
 
 
 classEnv :: ClassEnv
@@ -101,19 +104,13 @@ evalLib :: Map VName (Exp VName)
 evalLib = fmap snd stdLib'
 
 
+toStdLib :: GenDataCon -> (VName, (Qual Type, Exp VName))
+toStdLib g = (gdcName g, (gdcConType g, gdcCon g))
 
 
 stdLib' :: Map VName (Qual Type, Exp VName)
 stdLib' =
-  [ ("fst",
-      ( [] :=> TProd "a" "b" :-> "a"
-      , lam "z" $ case_ "z" [(PCon "," [PVar "x", PWildcard], "x")]
-      ))
-  , ("snd",
-      ( [] :=> TProd "a" "b" :-> "b"
-      , lam "z" $ case_ "z" [(PCon "," [PWildcard, PVar "x"], "x")]
-      ))
-  , ("swap",
+  [ ("swap",
       ( [] :=> TProd "a" "b" :-> TProd "b" "a"
       , lam "z" $ LProd ("snd" :@ "z") ("fst" :@ "z")
       ))
@@ -121,14 +118,9 @@ stdLib' =
       ( [IsInst "ToInline" "a"] :=> "a" :-> "a"
       , "id"
       ))
-  , ("inl",
-      buildDataCon "inl" ["a"] $ Just $ TSum "a" "b"
+  , ( toStdLib $ buildDataCon "inl" ["a"] $ Just $ TSum "a" "b"
     )
-  , ("inr",
-      buildDataCon "inr" ["b"] $ Just $ TSum "a" "b"
-    )
-  , (",",
-      buildDataCon "," ["a", "b"] Nothing
+  , ( toStdLib $ buildDataCon "inr" ["b"] $ Just $ TSum "a" "b"
     )
   , ("proj",
       ( []
@@ -198,7 +190,10 @@ stdLib' =
       ( [] :=> "a"
       , "error" :@ LString "undefined"
       ))
-  ]
+  ] <>
+  M.fromList ( join $ fmap (\(gdc, zs) -> toStdLib gdc : zs) $
+    [ buildRecord "," [("fst", "a"), ("snd", "b")] Nothing
+    ])
 
 test' :: Exp VName -> Either String (Qual Type)
 test' = second normalizeType
