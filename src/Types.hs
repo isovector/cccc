@@ -69,7 +69,7 @@ pattern TProd :: Type -> Type -> Type
 pattern TProd a b = TProdCon :@@ a :@@ b
 
 pattern TProdCon :: Type
-pattern TProdCon = TCon (TName "*" K2)
+pattern TProdCon = TCon (TName "," K2)
 
 pattern TSum :: Type -> Type -> Type
 pattern TSum a b = TSumCon :@@ a :@@ b
@@ -117,7 +117,9 @@ instance Show Type where
     . showString " + "
     . showsPrec 6 b
   showsPrec _ (TVar n)    = showString $ unTName n
-  showsPrec _ (TCon n)    = showString $ unTName n <> "!"
+  showsPrec _ (TCon n)    =
+    showParen (all ((||) <$> isSymbol <*> isPunctuation) $ unTName n)
+    $ showString $ unTName n <> "!"
   showsPrec x (a :@@ b)   = showParen (x > 9)
     $ showsPrec 9 a
     . showString " "
@@ -310,8 +312,7 @@ instance Show (Exp VName) where
     showParen (all ((||) <$> isSymbol <*> isPunctuation) $ unVName a)
       $ showsPrec x a
   showsPrec x (LCon a) =
-    showParen (all ((||) <$> isSymbol <*> isPunctuation) $ unVName a)
-      $ showsPrec x a
+    showsPrec x $ TCon (TName (unVName a) KStar)
   showsPrec x (V "." :@ a :@ b) =
     showParen (x >= 9)
       $ showsPrec 9 a

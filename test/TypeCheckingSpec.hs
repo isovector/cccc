@@ -8,6 +8,7 @@ import StdLib
 import Test.Hspec
 import TypeChecking
 import Types
+import Utils
 
 fromRight (Right a) = a
 

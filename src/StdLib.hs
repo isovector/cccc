@@ -8,6 +8,7 @@ import Data.Bifunctor (first, second)
 import Data.Map (Map)
 import Types
 import TypeChecking
+import Utils
 
 
 classEnv :: ClassEnv
@@ -100,6 +101,8 @@ evalLib :: Map VName (Exp VName)
 evalLib = fmap snd stdLib'
 
 
+
+
 stdLib' :: Map VName (Qual Type, Exp VName)
 stdLib' =
   [ ("fst",
@@ -119,13 +122,14 @@ stdLib' =
       , "id"
       ))
   , ("inl",
-      ( [] :=> "a" :-> TSum "a" "b"
-      , lam "x" $ LInl "x"
-      ))
+      buildDataCon "inl" ["a"] $ Just $ TSum "a" "b"
+    )
   , ("inr",
-      ( [] :=> "b" :-> TSum "a" "b"
-      , lam "x" $ LInr "x"
-      ))
+      buildDataCon "inr" ["b"] $ Just $ TSum "a" "b"
+    )
+  , (",",
+      buildDataCon "," ["a", "b"] Nothing
+    )
   , ("proj",
       ( []
           :=> ("a" :-> "c")
@@ -170,10 +174,6 @@ stdLib' =
   , ("==",
       ( [IsInst "Eq" "a"] :=> "a" :-> "a" :-> TBool
       , undefined
-      ))
-  , (",",
-      ( [] :=> "a" :-> "b" :-> TProd "a" "b"
-      , lam "a" $ lam "b" $ LProd "a" "b"
       ))
   , ("id",
       ( [CCat "k"] :=> TCat "k" "a" "a"

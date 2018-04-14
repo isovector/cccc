@@ -11,7 +11,7 @@ module TypeChecking where
 import           Bound
 import           Bound.Scope
 import           Control.Applicative ((<|>))
-import           Control.Lens ((<&>), makeLenses, view, (%~), (<>~))
+import           Control.Lens ((<&>), view, (%~), (<>~))
 import           Control.Monad.State
 import           Control.Monad.Trans.Except
 import           Data.Bifunctor
@@ -22,20 +22,9 @@ import qualified Data.Map as M
 import           Data.Monoid ((<>), First (..))
 import qualified Data.Set as S
 import           Data.Traversable (for)
-import           Debug.Trace (trace)
 import           Prelude hiding (exp)
 import           Types
-
-
-data TIState = TIState
-  { _tiVNames :: Int
-  , _tiTNames :: Int
-  , _tiSubst  :: Subst
-  }
-
-makeLenses ''TIState
-
-type TI = ExceptT String (State TIState)
+import Utils
 
 
 unify :: Type -> Type -> TI ()
@@ -46,51 +35,11 @@ unify t1 t2 = do
   pure ()
 
 
-kind :: Type -> TI Kind
-kind (TVar x)  = pure $ tKind x
-kind (TCon x)  = pure $ tKind x
-kind TInt      = pure KStar
-kind TUnit     = pure KStar
-kind TVoid     = pure KStar
-kind (a :@@ b) = do
-  ka <- kind a
-  kb <- kind b
-  let kerr kk = throwE $ mconcat
-        [ "kind mismatch: '"
-        , show b
-        , " :: "
-        , show kb
-        , "' vs '"
-        , show kk
-        , "'\nwhen trying to apply '"
-        , show a
-        , " :: "
-        , show ka
-        , "'\n"
-        ]
-  case ka of
-    kal :>> kar -> do
-      when (kal /= kb) $ kerr kal
-      pure kar
-    KStar -> kerr KStar
-
-
 newVName :: (Int -> a) -> TI a
 newVName f = do
   n <- view tiVNames <$> get
   modify $ tiVNames %~ (+1)
   pure $ f n
-
-
-letters :: [String]
-letters = do
-  b <- "":letters
-  a <- ['a'..'z']
-  pure $ a : b
-
-
-runTI :: TI a -> Either String a
-runTI = flip evalState (TIState 0 0 mempty) . runExceptT
 
 
 newTyVar :: Kind -> TI Type
@@ -264,10 +213,6 @@ typeInference cenv env e = do
       s'' = flatten $ s <> s'
       (ps'' :=> t') = sub s'' $ ps' :=> t
   errorAmbiguous $ nub ps'' :=> t'
-
-
-showTrace :: Show b => b -> b
-showTrace = trace =<< show
 
 
 flatten :: Subst -> Subst
