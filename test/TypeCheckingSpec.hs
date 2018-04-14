@@ -109,6 +109,8 @@ spec = do
     typeCheck (lamCase :@ LBool True) $
       [] :=> TUnit
 
+    typeCheck (LString "hello") $ [] :=> TString
+
     typeError $ "fst" :@ "inl"
     typeError $
       case_ "unit"

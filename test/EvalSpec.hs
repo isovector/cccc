@@ -22,6 +22,8 @@ spec :: Spec
 spec = do
   describe "evaluation" $ do
     eval (LInt 5) $ LInt 5
+    eval (LString "hello") $ LString "hello"
+
     eval (LBool False) $ LBool False
     eval (LProd "fst" "snd") $ LProd "fst" "snd"
     eval (getDef "fst") $ "fst" :@ LProd "fst" "snd"

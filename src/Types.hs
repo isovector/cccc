@@ -4,7 +4,6 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
-{-# LANGUAGE OverloadedLists            #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE StandaloneDeriving         #-}
@@ -88,6 +87,9 @@ pattern TArrCon = TCon (TName "->" K2)
 pattern TBool :: Type
 pattern TBool = TSum TUnit TUnit
 
+pattern TString :: Type
+pattern TString = TCon (TName "String" KStar)
+
 
 pattern TCat :: String -> Type -> Type -> Type
 pattern TCat k a b = TK2 k a b
@@ -156,6 +158,18 @@ data Pat
   | PCon VName [Pat]
   | PLit Lit
   deriving (Eq, Ord)
+
+
+instance IsString Pat where
+  fromString = PVar . fromString
+
+
+pattern PFalse :: Pat
+pattern PFalse = PCon "inl" [PWildcard]
+
+
+pattern PTrue :: Pat
+pattern PTrue = PCon "inr" [PWildcard]
 
 
 instance Show Pat where
@@ -227,16 +241,21 @@ pattern LBool i = Lit (LitBool i)
 pattern LUnit :: Exp a
 pattern LUnit = Lit LitUnit
 
+pattern LString :: String -> Exp a
+pattern LString s = Lit (LitString s)
+
 
 data Lit
   = LitInt Int
   | LitBool Bool
+  | LitString String
   | LitUnit
   deriving (Eq, Ord)
 
 instance Show Lit where
   show (LitInt i) = show i
   show (LitBool i) = show i
+  show (LitString i) = show i
   show LitUnit = "unit"
 
 
@@ -370,12 +389,12 @@ instance Types Assump where
 
 
 instance Types Type where
-  free (TVar a)    = [a]
-  free (TCon _)    = [] -- ?
-  free TInt        = []
-  free TBool       = []
-  free TUnit       = []
-  free TVoid       = []
+  free (TVar a)    = S.fromList [a]
+  free (TCon _)    = S.fromList [] -- ?
+  free TInt        = S.fromList []
+  free TBool       = S.fromList []
+  free TUnit       = S.fromList []
+  free TVoid       = S.fromList []
   free (a :@@ b)   = free a <> free b
 
   sub s (TVar n)    = maybe (TVar n) id $ M.lookup n $ unSubst s
@@ -422,8 +441,18 @@ instance Monoid Subst where
 
 
 newtype ClassEnv = ClassEnv
-  { unClassEnv :: Map (Qual Pred) (Map VName (Exp VName))
+  { unClassEnv :: Map Pred InstRep
   } deriving (Eq, Show, Monoid)
+
+
+data InstRep = InstRep
+  { irQuals :: Qual ()
+  , irImpls :: Map VName (Exp VName)
+  } deriving (Eq, Show)
+
+
+getQuals :: ClassEnv -> [Qual Pred]
+getQuals = fmap (\(a, b) -> a <$ irQuals b) . M.assocs . unClassEnv
 
 
 newtype SymTable a = SymTable

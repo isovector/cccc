@@ -151,9 +151,10 @@ splatter = splat pure . const . pure
 
 
 inferLit :: Lit -> Type
-inferLit (LitInt _)  = TInt
-inferLit (LitBool _) = TBool
-inferLit LitUnit     = TUnit
+inferLit (LitInt _)    = TInt
+inferLit (LitBool _)   = TBool
+inferLit (LitString _) = TString
+inferLit LitUnit       = TUnit
 
 
 infer
@@ -311,13 +312,13 @@ normalize (Scheme _ body) =
 
 
 discharge :: ClassEnv -> Pred -> TI (Subst, [Pred])
-discharge c@(ClassEnv cenv) p = do
-  x <- for (M.keys cenv) $ \(a :=> b) -> do
+discharge cenv p = do
+  x <- for (getQuals cenv) $ \(a :=> b) -> do
     s <- (fmap (a,) <$> match' b p) <|> pure Nothing
     pure $ First s
   case getFirst $ mconcat x of
     Just (ps, s) ->
-      fmap mconcat $ traverse (discharge c) $ sub s $ ps
+      fmap mconcat $ traverse (discharge cenv) $ sub s $ ps
     Nothing -> pure $ (mempty, pure p)
 
 
