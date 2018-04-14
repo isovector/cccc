@@ -63,16 +63,10 @@ pattern K2 = KStar :>> KStar :>> KStar
 
 
 pattern TProd :: Type -> Type -> Type
-pattern TProd a b = TProdCon :@@ a :@@ b
-
-pattern TProdCon :: Type
-pattern TProdCon = TCon (TName "," K2)
+pattern TProd a b = TCon (TName "," K2) :@@ a :@@ b
 
 pattern TSum :: Type -> Type -> Type
-pattern TSum a b = TSumCon :@@ a :@@ b
-
-pattern TSumCon :: Type
-pattern TSumCon = TCon (TName "+" K2)
+pattern TSum a b = TCon (TName "+" K2) :@@ a :@@ b
 
 pattern TArr :: Type -> Type -> Type
 pattern TArr a b = TArrCon :@@ a :@@ b
@@ -81,19 +75,16 @@ pattern TArrCon :: Type
 pattern TArrCon = TCon (TName "->" K2)
 
 pattern TBool :: Type
-pattern TBool = TCon "2"
+pattern TBool = "2"
 
 pattern TUnit :: Type
-pattern TUnit = TCon "1"
-
-pattern TVoid :: Type
-pattern TVoid = TCon "0"
+pattern TUnit = "1"
 
 pattern TString :: Type
-pattern TString = TCon "String"
+pattern TString = "String"
 
 pattern TInt :: Type
-pattern TInt = TCon "Int"
+pattern TInt = "Int"
 
 
 pattern TCat :: String -> Type -> Type -> Type
@@ -168,11 +159,11 @@ instance IsString Pat where
 
 
 pattern PFalse :: Pat
-pattern PFalse = PCon "false" []
+pattern PFalse = PCon "False" []
 
 
 pattern PTrue :: Pat
-pattern PTrue = PCon "true" []
+pattern PTrue = PCon "True" []
 
 
 instance Show Pat where
@@ -235,22 +226,6 @@ data Exp a
   deriving (Functor, Foldable, Traversable)
 
 
-pattern LInt :: Int -> Exp a
-pattern LInt i = Lit (LitInt i)
-
-pattern LTrue :: Exp a
-pattern LTrue = LCon "true"
-
-pattern LFalse :: Exp a
-pattern LFalse = LCon "false"
-
-pattern LUnit :: Exp a
-pattern LUnit = LCon "unit"
-
-pattern LString :: String -> Exp a
-pattern LString s = Lit (LitString s)
-
-
 data Lit
   = LitInt Int
   | LitString String
@@ -262,7 +237,10 @@ instance Show Lit where
 
 
 instance IsString a => IsString (Exp a) where
-  fromString = V . fromString
+  fromString x =
+    case isLower $ head x of
+      False -> LCon $ fromString x
+      True  -> V $ fromString x
 
 
 instance Applicative Exp where
@@ -282,14 +260,23 @@ instance Monad Exp where
   Case e p   >>= f = Case (e >>= f) $ fmap (second (>>>= f)) p
 
 
+pattern LInt :: Int -> Exp a
+pattern LInt i = Lit (LitInt i)
+
+pattern LTrue :: Exp a
+pattern LTrue = LCon "True"
+
+pattern LFalse :: Exp a
+pattern LFalse = LCon "False"
+
+pattern LUnit :: Exp a
+pattern LUnit = LCon "Unit"
+
+pattern LString :: String -> Exp a
+pattern LString s = Lit (LitString s)
+
 pattern LProd :: Exp a -> Exp a -> Exp a
 pattern LProd a b = LCon "," :@ a :@ b
-
-pattern LInl :: Exp a -> Exp a
-pattern LInl a = LCon "inl" :@ a
-
-pattern LInr :: Exp a -> Exp a
-pattern LInr a = LCon "inr" :@ a
 
 
 newtype VName = VName { unVName :: String }

@@ -28,38 +28,39 @@ cccDidntInline e (q :=> t) = it ("to inline: " <> show e) $ do
 
 spec :: Spec
 spec = do
-  describe "type checking" $ do
-    cccType (lam "x" "x") $
-      [CCat "b"] :=> TCat "b" "a" "a"
+  pure ()
+  -- describe "type checking" $ do
+  --   cccType (lam "x" "x") $
+  --     [CCat "b"] :=> TCat "b" "a" "a"
 
-    cccType (lam "x" $ lam "y" $ "," :@ "x" :@ "y") $
-      [CCat "c"]
-        :=> TCat "c" (TProd "a" "b") (TProd "a" "b")
+  --   cccType (lam "x" $ lam "y" $ "," :@ "x" :@ "y") $
+  --     [CCat "c"]
+  --       :=> TCat "c" (TProd "a" "b") (TProd "a" "b")
 
-    cccType (lam "x" $ lam "y" $ LProd "x" "y") $
-      [CCat "c"]
-        :=> TCat "c" (TProd "a" "b") (TProd "a" "b")
+  --   cccType (lam "x" $ lam "y" $ LProd "x" "y") $
+  --     [CCat "c"]
+  --       :=> TCat "c" (TProd "a" "b") (TProd "a" "b")
 
-    cccType (lam "x" $ lam "y" $ LProd "y" "x") $
-      [CCat "c"]
-        :=> TCat "c" (TProd "a" "b") (TProd "b" "a")
-    cccType (lam "z" $ LProd ("snd" :@ "z") ("fst" :@ "z")) $
-      [CCat "c"]
-        :=> TCat "c" (TProd "a" "b") (TProd "b" "a")
-    cccDidntInline "swap" $
-      [CCat "c"]
-        :=> TCat "c" (TProd "a" "b") (TProd "b" "a")
+  --   cccType (lam "x" $ lam "y" $ LProd "y" "x") $
+  --     [CCat "c"]
+  --       :=> TCat "c" (TProd "a" "b") (TProd "b" "a")
+  --   cccType (lam "z" $ LProd ("snd" :@ "z") ("fst" :@ "z")) $
+  --     [CCat "c"]
+  --       :=> TCat "c" (TProd "a" "b") (TProd "b" "a")
+  --   cccDidntInline "swap" $
+  --     [CCat "c"]
+  --       :=> TCat "c" (TProd "a" "b") (TProd "b" "a")
 
 
-    cccType (lam "x" $ lam "y" $ LProd (LInt 5) LTrue) $
-      [CCat "b"]
-        :=> TCat "b" "a" (TProd TInt TBool)
+  --   cccType (lam "x" $ lam "y" $ LProd (LInt 5) LTrue) $
+  --     [CCat "b"]
+  --       :=> TCat "b" "a" (TProd TInt TBool)
 
-    cccType (lam "x" $ "fst") $
-      [CCat "b"]
-        :=> TCat "b" "a" (TProd "c" "d" :-> "c")
+  --   cccType (lam "x" $ "fst") $
+  --     [CCat "b"]
+  --       :=> TCat "b" "a" (TProd "c" "d" :-> "c")
 
-    cccType "fst" $
-      [CCat "c"]
-        :=> TCat "c" (TProd "a" "b") "a"
+  --   cccType "fst" $
+  --     [CCat "c"]
+  --       :=> TCat "c" (TProd "a" "b") "a"
 

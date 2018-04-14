@@ -13,14 +13,7 @@ import           Data.Maybe (mapMaybe)
 import           Data.Monoid ((<>))
 import           TypeChecking
 import           Types
-
-
-unfurrow :: Exp a  -> Maybe (VName, [Exp a])
-unfurrow = go []
-  where
-    go acc (LCon a) = pure (a, acc)
-    go acc (a :@ b) = go (b : acc) a
-    go _ _ = Nothing
+import           Utils
 
 
 extract :: Pat -> Exp VName -> Maybe [(VName, Exp VName)]
@@ -28,7 +21,7 @@ extract (PVar i)  a      = pure $ pure (i, a)
 extract (PAs i p) a      = (:) <$> pure (i, a) <*> extract p a
 extract PWildcard _      = pure []
 extract (PCon c ps) a
-  | Just (c', as) <- unfurrow a
+  | Just (c', as) <- unravel a
   , c == c'              = if length ps /= length as
                               then error $ "bad number of pattern ctors to " <> show c
                               else fmap join . traverse (uncurry extract) $ zip ps as

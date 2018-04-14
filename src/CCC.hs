@@ -9,6 +9,7 @@ import Data.Bool (bool)
 import Data.Monoid ((<>))
 import TypeChecking
 import Types
+import Utils
 
 
 fork :: (a -> b) -> (a -> c) -> (a -> (b, c))
@@ -45,9 +46,8 @@ toCCC (Lam n x) =
         _ -> \z -> ("." :@ z :@ "shouldInline")
       ) "const" :@ V a
     V (F _)     -> error "this should never be hit"
-    LProd a b  -> anonLam $ (V $ F ",") :@ a :@ b
-    LInl b   -> anonLam $ (V $ F $ "inl") :@ b
-    LInr b   -> anonLam $ (V $ F $ "inr") :@ b
+    z | Just (c, as) <- unravel z
+        ->  "const" :@ (foldl (\a b -> a :@ anonLam b) (LCon c) as)
     u :@ v      ->
       foldl1 (:@)
         [ "."
@@ -70,11 +70,6 @@ toCCC (Lam n x) =
           . instantiate1 ("fst" :@ V name)
           $ x
     LInt i     -> "const" :@ LInt i
-    LTrue      -> "const" :@ LTrue
-    LFalse     -> "const" :@ LFalse
-    -- TODO(sandy): these are icky
-    LUnit      -> "const" :@ LUnit
-    LCon l -> error $ show l
     -- TODO(sandy): is this right? it discards info
     Assert a _ -> anonLam a
     Let _ b e  -> anonLam $ instantiate1 b e

@@ -74,11 +74,6 @@ classEnv = ClassEnv
     $ [ ( "==", "undefined" )
       ]
     )
-  , ( IsInst "Eq" TVoid
-    , InstRep ([] :=> ())
-    $ [ ( "==", "undefined" )
-      ]
-    )
   , ( IsInst "Eq" (TProd "a" "b")
     , InstRep ([IsInst "Eq" "a", IsInst "Eq" "b"] :=> ())
     $ [ ( "==", "undefined" )
@@ -118,11 +113,11 @@ stdLib' =
       ( [IsInst "ToInline" "a"] :=> "a" :-> "a"
       , "id"
       ))
-  , ( toStdLib $ buildDataCon "inl" ["a"] $ Just $ TSum "a" "b" )
-  , ( toStdLib $ buildDataCon "inr" ["b"] $ Just $ TSum "a" "b" )
-  , ( toStdLib $ buildDataCon "false" [] $ Just $ TBool )
-  , ( toStdLib $ buildDataCon "true" [] $ Just $ TBool )
-  , ( toStdLib $ buildDataCon "unit" [] $ Just TUnit )
+  , ( toStdLib $ buildDataCon "Inl" ["a"] $ Just $ TSum "a" "b" )
+  , ( toStdLib $ buildDataCon "Inr" ["b"] $ Just $ TSum "a" "b" )
+  , ( toStdLib $ buildDataCon "False" [] $ Just $ TBool )
+  , ( toStdLib $ buildDataCon "True" [] $ Just $ TBool )
+  , ( toStdLib $ buildDataCon "Unit" [] $ Just TUnit )
   , ("proj",
       ( []
           :=> ("a" :-> "c")
@@ -131,8 +126,8 @@ stdLib' =
           :-> "c"
       , lam "f" $ lam "g" $ lam "e" $
           case_ "e"
-            [ ( PCon "inl" [PVar "x"], "f" :@ "x")
-            , ( PCon "inr" [PVar "y"], "g" :@ "y")
+            [ ( PCon "Inl" [PVar "x"], "f" :@ "x")
+            , ( PCon "Inr" [PVar "y"], "g" :@ "y")
             ]
       ))
   , (".",

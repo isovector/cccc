@@ -47,7 +47,7 @@ spec = do
     typeCheck (Assert "id" $ unqualType idT) idT
     typeCheck (Assert "id" $ "b" :-> "b") idT
 
-    typeCheck ("." :@ "inl") $
+    typeCheck ("." :@ "Inl") $
       [] :=> ("a" :-> "b") :-> "a" :-> TSum "b" "c"
 
     typeCheck "==" $
@@ -65,8 +65,8 @@ spec = do
     typeCheck (Assert "==" eqAxBT) $
       [IsInst "Eq" "a", IsInst "Eq" "b"] :=> eqAxBT
 
-    typeCheck "unit" $ [] :=> TUnit
-    typeCheck ("inl" :@ "unit") $ [] :=> TSum TUnit "a"
+    typeCheck "Unit" $ [] :=> TUnit
+    typeCheck ("Inl" :@ "Unit") $ [] :=> TSum TUnit "a"
     typeCheck (LInt 5) $ [] :=> TInt
     typeCheck (LProd "id" "id") $
       [CCat "b", CCat "d"] :=> TProd (TCat "b" "a" "a") (TCat "d" "c" "c")
@@ -75,35 +75,35 @@ spec = do
         :=> TProd ("a" :-> "a" :-> TBool) ("b" :-> "b" :-> TBool)
 
     typeCheck (
-      case_ "unit"
-        [ (PWildcard, "unit")
-        , (PWildcard, "unit")
+      case_ "Unit"
+        [ (PWildcard, "Unit")
+        , (PWildcard, "Unit")
         ]
       ) $ [] :=> TUnit
 
     typeCheck (
-      case_ "unit"
+      case_ "Unit"
         [ (PVar "x",  "x")
-        , (PWildcard, "unit")
+        , (PWildcard, "Unit")
         ]
       ) $ [] :=> TUnit
 
     typeCheck (
       lam "z" $
         case_ "z"
-          [ (PCon "inl" [PVar "x"],  "x")
-          , (PCon "inr" [PCon "unit" []], "unit")
+          [ (PCon "Inl" [PVar "x"],  "x")
+          , (PCon "Inr" [PCon "Unit" []], "Unit")
           ]
       ) $ [] :=> TSum TUnit TUnit :-> TUnit
 
     let lamCase =
-          lam "z" $ case_ "z" [ (PCon "inl" [PVar "x"], "x") , (PCon "inr" [PVar "z"], "z") ]
+          lam "z" $ case_ "z" [ (PCon "Inl" [PVar "x"], "x") , (PCon "Inr" [PVar "z"], "z") ]
 
     typeCheck lamCase $
       [] :=> TSum "a" "a" :-> "a"
 
     -- TODO(sandy): THERE IS A BUG HERE MY DUDE -- this gets inferred as having type `a`
-    -- typeCheck (lamCase :@ ("inr" :@ "unit")) $
+    -- typeCheck (lamCase :@ ("Inr" :@ "Unit")) $
     --   [] :=> TUnit
 
     typeCheck (LString "hello") $ [] :=> TString
@@ -116,14 +116,14 @@ spec = do
     typeCheck (getMethod "==" "Eq" TInt) $
       [] :=> TInt :-> TInt :-> TBool
 
-    typeError $ "fst" :@ "inl"
+    typeError $ "fst" :@ "Inl"
     typeError $
-      case_ "unit"
+      case_ "Unit"
         [ (PWildcard, LUnit)
         , (PWildcard, LInt 5)
         ]
     typeError $
-      case_ "unit"
+      case_ "Unit"
         [ (PVar "x", "x")
         , (PWildcard, LInt 5)
         ]
@@ -132,6 +132,6 @@ spec = do
 
   describe "kind checking" $ do
     kindError $ TInt :@@ TBool
-    kindError $ TProdCon :@@ TProdCon
-    kindError $ TProdCon :@@ TInt :@@ TSumCon
+    kindError $ TCon (TName "+" K2) :@@ TCon (TName "+" K2)
+    kindError $ TCon (TName "+" K2) :@@ TInt :@@ TCon (TName "," K2)
 

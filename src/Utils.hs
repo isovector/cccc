@@ -31,6 +31,14 @@ makeLenses ''TIState
 type TI = ExceptT String (State TIState)
 
 
+unravel :: Exp a -> Maybe (VName, [Exp a])
+unravel = go []
+  where
+    go acc (LCon a) = pure (a, acc)
+    go acc (a :@ b) = go (b : acc) a
+    go _ _ = Nothing
+
+
 letters :: [String]
 letters = do
   b <- "":letters
@@ -45,9 +53,6 @@ runTI = flip evalState (TIState 0 0 mempty) . runExceptT
 kind :: Type -> TI Kind
 kind (TVar x)  = pure $ tKind x
 kind (TCon x)  = pure $ tKind x
-kind TInt      = pure KStar
-kind TUnit     = pure KStar
-kind TVoid     = pure KStar
 kind (a :@@ b) = do
   ka <- kind a
   kb <- kind b

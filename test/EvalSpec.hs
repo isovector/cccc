@@ -36,21 +36,21 @@ spec = do
     eval (getDef "fst") $ "fst" :@ LProd "fst" "snd"
 
     let myPats =
-          [ ( PCon "inl" [PLit (LitInt 5)]
+          [ ( PCon "Inl" [PLit (LitInt 5)]
             , LInt 1
             )
-          , ( PCon "inl" [PVar "z"]
+          , ( PCon "Inl" [PVar "z"]
             , "z"
             )
-          , ( PCon "inr" [PWildcard]
+          , ( PCon "Inr" [PWildcard]
             , LInt $ -15
             )
           ]
 
-    eval (LInt 1) $ case_ ("inl" :@ LInt 5) myPats
-    eval (LInt 2) $ case_ ("inl" :@ LInt 2) myPats
-    eval (LInt 3) $ case_ ("inl" :@ LInt 3) myPats
-    eval (LInt $ -15) $ case_ ("inr" :@ LInt 3) myPats
+    eval (LInt 1) $ case_ ("Inl" :@ LInt 5) myPats
+    eval (LInt 2) $ case_ ("Inl" :@ LInt 2) myPats
+    eval (LInt 3) $ case_ ("Inl" :@ LInt 3) myPats
+    eval (LInt $ -15) $ case_ ("Inr" :@ LInt 3) myPats
 
     eval (LString "yo") $ case_ (LString "hello")
       [ ( PLit (LitString "hello"), LString "yo" )
