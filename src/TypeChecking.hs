@@ -66,8 +66,6 @@ mgu (TCon a) (TCon b)
   | a == b  = pure mempty
 mgu (TVar u) t  = varBind u t
 mgu t (TVar u)  = varBind u t
-mgu TInt TInt   = pure mempty
-mgu TVoid TVoid = pure mempty
 mgu t1 t2       = throwE $
   mconcat
     [ "types don't unify: '"
@@ -243,8 +241,6 @@ normalize (Scheme _ body) =
 
     normtype (TCon a)    = TCon a
     normtype (a :@@ b)   = normtype a :@@ normtype b
-    normtype TInt        = TInt
-    normtype TVoid       = TVoid
     normtype (TVar a)    =
       case lookup a ord of
         Just x  -> TVar $ TName (unTName x) (tKind x)
@@ -287,8 +283,6 @@ match (l :@@ r) (l' :@@ r') = do
   sr <- match r r'
   pure . Subst $ unSubst sl <> unSubst sr
 match (TVar u) t  = pure $ Subst [(u, t)]
-match TInt TInt   = pure mempty
-match TVoid TVoid = pure mempty
 match (TCon tc1) (TCon tc2)
   | tc1 == tc2    = pure mempty
 match t1 t2       = throwE $ mconcat

@@ -35,8 +35,6 @@ infixl 9 :@@
 data Type
   = TVar TName
   | TCon TName
-  | TInt
-  | TVoid
   | Type :@@ Type
   deriving (Eq, Ord)
 
@@ -82,15 +80,20 @@ pattern TArr a b = TArrCon :@@ a :@@ b
 pattern TArrCon :: Type
 pattern TArrCon = TCon (TName "->" K2)
 
-
 pattern TBool :: Type
 pattern TBool = TCon "2"
 
 pattern TUnit :: Type
 pattern TUnit = TCon "1"
 
+pattern TVoid :: Type
+pattern TVoid = TCon "0"
+
 pattern TString :: Type
-pattern TString = TCon (TName "String" KStar)
+pattern TString = TCon "String"
+
+pattern TInt :: Type
+pattern TInt = TCon "Int"
 
 
 pattern TCat :: String -> Type -> Type -> Type
@@ -125,8 +128,6 @@ instance Show Type where
     $ showsPrec 9 a
     . showString " "
     . showsPrec 10 b
-  showsPrec _ TInt        = showString "Int"
-  showsPrec _ TVoid       = showString "0"
 
 
 data TName
@@ -404,15 +405,11 @@ instance Types Assump where
 instance Types Type where
   free (TVar a)    = S.fromList [a]
   free (TCon _)    = S.fromList [] -- ?
-  free TInt        = S.fromList []
-  free TVoid       = S.fromList []
   free (a :@@ b)   = free a <> free b
 
   sub s (TVar n)    = maybe (TVar n) id $ M.lookup n $ unSubst s
   sub _ (TCon n)    = TCon n
   sub s (a :@@ b)   = sub s a :@@ sub s b
-  sub _ TInt        = TInt
-  sub _ TVoid       = TVoid
 
 
 instance Types a => Types [a] where

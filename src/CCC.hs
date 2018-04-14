@@ -22,8 +22,7 @@ simplify :: Exp VName -> Exp VName
 simplify ("." :@ "apply" :@ ("fork" :@ ("curry" :@ h) :@ g)) =
   simplify $ "." :@ h :@ ("fork" :@ "id" :@ g)
 simplify (V n)       = V n
-simplify (LInt n)    = LInt n
-simplify (TCon c)    = TCon c
+simplify (LCon c)    = LCon c
 simplify (a :@ b)    = simplify a :@ simplify b
 simplify _           = error "simplify can only be done on pointfree exps"
 
@@ -73,10 +72,9 @@ toCCC (Lam n x) =
     LInt i     -> "const" :@ LInt i
     LTrue      -> "const" :@ LTrue
     LFalse     -> "const" :@ LFalse
-    -- LProd a b  -> LProd (anonLam a) (anonLam b)
     -- TODO(sandy): these are icky
     LUnit      -> "const" :@ LUnit
-    LCon x -> error $ show x
+    LCon l -> error $ show l
     -- TODO(sandy): is this right? it discards info
     Assert a _ -> anonLam a
     Let _ b e  -> anonLam $ instantiate1 b e
