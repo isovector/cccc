@@ -16,6 +16,7 @@ import           Control.Monad.State
 import           Control.Monad.Trans.Except
 import           Data.Bifunctor
 import           Data.Bool (bool)
+import           Data.Foldable (for_)
 import           Data.List (nub, intercalate)
 import           Data.Map (Map)
 import qualified Data.Map as M
@@ -24,7 +25,7 @@ import qualified Data.Set as S
 import           Data.Traversable (for)
 import           Prelude hiding (exp)
 import           Types
-import Utils
+import           Utils
 
 
 unify :: Type -> Type -> TI ()
@@ -67,7 +68,6 @@ mgu (TVar u) t  = varBind u t
 mgu t (TVar u)  = varBind u t
 mgu TInt TInt   = pure mempty
 mgu TVoid TVoid = pure mempty
-mgu TUnit TUnit = pure mempty
 mgu t1 t2       = throwE $
   mconcat
     [ "types don't unify: '"
@@ -101,9 +101,7 @@ splatter = splat pure . const . pure
 
 inferLit :: Lit -> Type
 inferLit (LitInt _)    = TInt
-inferLit (LitBool _)   = TBool
 inferLit (LitString _) = TString
-inferLit LitUnit       = TUnit
 
 
 infer
@@ -145,7 +143,7 @@ infer f env (LProd a b) = do
 infer f env (Case e ps) = do
   t <- newTyVar KStar
   (p1, te) <- infer f env e
-  p2 <- for ps $ \(pat, pexp) -> do
+  (p2, tps) <- fmap unzip $ for ps $ \(pat, pexp) -> do
     (as, ts) <- inferPattern env pat
     unify te ts
     let env' = SymTable $ M.fromList (as <&> \(i :>: x) -> (i, x))
@@ -153,7 +151,9 @@ infer f env (Case e ps) = do
         pexp' = instantiate V pexp
     (p2, tp) <- infer f env' pexp'
     unify t tp
-    pure p2
+    pure (p2, tp)
+
+  for_ (zip tps $ tail tps) $ uncurry $ flip unify
 
   pure (p1 <> join p2, t)
 
@@ -244,8 +244,6 @@ normalize (Scheme _ body) =
     normtype (TCon a)    = TCon a
     normtype (a :@@ b)   = normtype a :@@ normtype b
     normtype TInt        = TInt
-    normtype TBool       = TBool
-    normtype TUnit       = TUnit
     normtype TVoid       = TVoid
     normtype (TVar a)    =
       case lookup a ord of
@@ -291,7 +289,6 @@ match (l :@@ r) (l' :@@ r') = do
 match (TVar u) t  = pure $ Subst [(u, t)]
 match TInt TInt   = pure mempty
 match TVoid TVoid = pure mempty
-match TUnit TUnit = pure mempty
 match (TCon tc1) (TCon tc2)
   | tc1 == tc2    = pure mempty
 match t1 t2       = throwE $ mconcat

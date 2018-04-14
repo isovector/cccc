@@ -23,11 +23,7 @@ simplify ("." :@ "apply" :@ ("fork" :@ ("curry" :@ h) :@ g)) =
   simplify $ "." :@ h :@ ("fork" :@ "id" :@ g)
 simplify (V n)       = V n
 simplify (LInt n)    = LInt n
-simplify (LBool n)   = LBool n
-simplify (LProd a b) = LProd (simplify a) (simplify b)
-simplify (LInl a)    = LInl (simplify a)
-simplify (LInr a)    = LInr (simplify a)
-simplify LUnit       = LUnit
+simplify (TCon c)    = TCon c
 simplify (a :@ b)    = simplify a :@ simplify b
 simplify _           = error "simplify can only be done on pointfree exps"
 
@@ -44,11 +40,15 @@ toCCC (Lam n x) =
         ","   -> id
         "fst" -> id
         "snd" -> id
+        "inr" -> id
+        "inl" -> id
         "."   -> id
         _ -> \z -> ("." :@ z :@ "shouldInline")
       ) "const" :@ V a
     V (F _)     -> error "this should never be hit"
     LProd a b  -> anonLam $ (V $ F ",") :@ a :@ b
+    LInl b   -> anonLam $ (V $ F $ "inl") :@ b
+    LInr b   -> anonLam $ (V $ F $ "inr") :@ b
     u :@ v      ->
       foldl1 (:@)
         [ "."
@@ -71,12 +71,12 @@ toCCC (Lam n x) =
           . instantiate1 ("fst" :@ V name)
           $ x
     LInt i     -> "const" :@ LInt i
-    LBool b    -> "const" :@ LBool b
+    LTrue      -> "const" :@ LTrue
+    LFalse     -> "const" :@ LFalse
     -- LProd a b  -> LProd (anonLam a) (anonLam b)
     -- TODO(sandy): these are icky
-    LInl b   -> anonLam $ (V $ F $ "inl") :@ b
-    LInr b   -> anonLam $ (V $ F $ "inr") :@ b
     LUnit      -> "const" :@ LUnit
+    LCon x -> error $ show x
     -- TODO(sandy): is this right? it discards info
     Assert a _ -> anonLam a
     Let _ b e  -> anonLam $ instantiate1 b e

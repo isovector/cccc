@@ -36,20 +36,20 @@ classEnv = ClassEnv
               [ ( PFalse
                 , case_ "y"
                   [ ( PFalse
-                    , LBool True
+                    , LTrue
                     )
                   , ( PWildcard
-                    , LBool False
+                    , LFalse
                     )
                   ]
                 )
               , ( PTrue
                 , case_ "y"
                   [ ( PTrue
-                    , LBool True
+                    , LTrue
                     )
                   , ( PWildcard
-                    , LBool False
+                    , LFalse
                     )
                   ]
                 )
@@ -60,7 +60,7 @@ classEnv = ClassEnv
   , ( IsInst "Eq" TUnit
     , InstRep ([] :=> ())
     $ [ ( "=="
-        , lam "x" $ lam "y" $ LBool True
+        , lam "x" $ lam "y" $ LTrue
         )
       ]
     )
@@ -118,10 +118,11 @@ stdLib' =
       ( [IsInst "ToInline" "a"] :=> "a" :-> "a"
       , "id"
       ))
-  , ( toStdLib $ buildDataCon "inl" ["a"] $ Just $ TSum "a" "b"
-    )
-  , ( toStdLib $ buildDataCon "inr" ["b"] $ Just $ TSum "a" "b"
-    )
+  , ( toStdLib $ buildDataCon "inl" ["a"] $ Just $ TSum "a" "b" )
+  , ( toStdLib $ buildDataCon "inr" ["b"] $ Just $ TSum "a" "b" )
+  , ( toStdLib $ buildDataCon "false" [] $ Just $ TBool )
+  , ( toStdLib $ buildDataCon "true" [] $ Just $ TBool )
+  , ( toStdLib $ buildDataCon "unit" [] $ Just TUnit )
   , ("proj",
       ( []
           :=> ("a" :-> "c")
@@ -158,10 +159,6 @@ stdLib' =
           :-> TCat "k" "a" "d"
           :-> TCat "k" "a" (TProd "c" "d")
       , undefined
-      ))
-  , ("unit",
-      ( [] :=> TUnit
-      , LUnit
       ))
   , ("==",
       ( [IsInst "Eq" "a"] :=> "a" :-> "a" :-> TBool

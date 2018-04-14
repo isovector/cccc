@@ -51,7 +51,7 @@ spec = do
         :=> TCat "c" (TProd "a" "b") (TProd "b" "a")
 
 
-    cccType (lam "x" $ lam "y" $ LProd (LInt 5) (LBool True)) $
+    cccType (lam "x" $ lam "y" $ LProd (LInt 5) LTrue) $
       [CCat "b"]
         :=> TCat "b" "a" (TProd TInt TBool)
 

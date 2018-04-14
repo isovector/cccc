@@ -36,7 +36,6 @@ data Type
   = TVar TName
   | TCon TName
   | TInt
-  | TUnit
   | TVoid
   | Type :@@ Type
   deriving (Eq, Ord)
@@ -85,7 +84,10 @@ pattern TArrCon = TCon (TName "->" K2)
 
 
 pattern TBool :: Type
-pattern TBool = TSum TUnit TUnit
+pattern TBool = TCon "2"
+
+pattern TUnit :: Type
+pattern TUnit = TCon "1"
 
 pattern TString :: Type
 pattern TString = TCon (TName "String" KStar)
@@ -107,7 +109,6 @@ instance Show Type where
     $ showsPrec 1 a
     . showString " -> "
     . showsPrec 0 b
-  showsPrec _ (TSum TUnit TUnit) = showString "2"
   showsPrec x (TProd a b) = showParen (x > 3)
     $ showsPrec 4 a
     . showString " * "
@@ -125,7 +126,6 @@ instance Show Type where
     . showString " "
     . showsPrec 10 b
   showsPrec _ TInt        = showString "Int"
-  showsPrec _ TUnit       = showString "1"
   showsPrec _ TVoid       = showString "0"
 
 
@@ -167,11 +167,11 @@ instance IsString Pat where
 
 
 pattern PFalse :: Pat
-pattern PFalse = PLit (LitBool False)
+pattern PFalse = PCon "false" []
 
 
 pattern PTrue :: Pat
-pattern PTrue = PLit (LitBool True)
+pattern PTrue = PCon "true" []
 
 
 instance Show Pat where
@@ -237,11 +237,14 @@ data Exp a
 pattern LInt :: Int -> Exp a
 pattern LInt i = Lit (LitInt i)
 
-pattern LBool :: Bool -> Exp a
-pattern LBool i = Lit (LitBool i)
+pattern LTrue :: Exp a
+pattern LTrue = LCon "true"
+
+pattern LFalse :: Exp a
+pattern LFalse = LCon "false"
 
 pattern LUnit :: Exp a
-pattern LUnit = Lit LitUnit
+pattern LUnit = LCon "unit"
 
 pattern LString :: String -> Exp a
 pattern LString s = Lit (LitString s)
@@ -249,16 +252,12 @@ pattern LString s = Lit (LitString s)
 
 data Lit
   = LitInt Int
-  | LitBool Bool
   | LitString String
-  | LitUnit
   deriving (Eq, Ord)
 
 instance Show Lit where
   show (LitInt i) = show i
-  show (LitBool i) = show i
   show (LitString i) = show i
-  show LitUnit = "unit"
 
 
 instance IsString a => IsString (Exp a) where
@@ -406,8 +405,6 @@ instance Types Type where
   free (TVar a)    = S.fromList [a]
   free (TCon _)    = S.fromList [] -- ?
   free TInt        = S.fromList []
-  free TBool       = S.fromList []
-  free TUnit       = S.fromList []
   free TVoid       = S.fromList []
   free (a :@@ b)   = free a <> free b
 
@@ -415,8 +412,6 @@ instance Types Type where
   sub _ (TCon n)    = TCon n
   sub s (a :@@ b)   = sub s a :@@ sub s b
   sub _ TInt        = TInt
-  sub _ TUnit       = TUnit
-  sub _ TBool       = TBool
   sub _ TVoid       = TVoid
 
 

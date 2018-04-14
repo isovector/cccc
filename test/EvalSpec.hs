@@ -4,6 +4,7 @@
 
 module EvalSpec where
 
+import           Data.Bool (bool)
 import           Data.Foldable (for_)
 import qualified Data.Map as M
 import           Data.Monoid ((<>))
@@ -30,7 +31,7 @@ spec = do
     eval (LInt 5) $ LInt 5
     eval (LString "hello") $ LString "hello"
 
-    eval (LBool False) $ LBool False
+    eval (LFalse) $ LFalse
     eval (LProd "fst" "snd") $ LProd "fst" "snd"
     eval (getDef "fst") $ "fst" :@ LProd "fst" "snd"
 
@@ -65,10 +66,10 @@ spec = do
     let idF = lam "x" "x"
     eval idF idF
 
-    eval (LBool True) $ let_ "x" (LBool True) "x"
-    eval (LInt 7) $ let_ "x" (LBool True) $
+    eval (LTrue) $ let_ "x" (LTrue) "x"
+    eval (LInt 7) $ let_ "x" (LTrue) $
       "fst" :@ LProd (LInt 7) "x"
-    eval (LBool True) $ let_ "x" (LBool True) $
+    eval (LTrue) $ let_ "x" (LTrue) $
       "snd" :@ ("," :@ LInt 7 :@ "x")
 
     eval idF $ Assert idF $ TInt :-> TInt
@@ -81,5 +82,8 @@ spec = do
           b <- [False, True]
           pure (a, b)
     for_ apps $ \(a, b) ->
-      eval (LBool $ a == b) $ getMethod "==" "Eq" TBool :@ LBool a :@ LBool b
+      eval (bool LFalse LTrue $ a == b) $
+        getMethod "==" "Eq" TBool
+          :@ bool LFalse LTrue a
+          :@ bool LFalse LTrue b
 
