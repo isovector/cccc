@@ -263,15 +263,6 @@ instance Monad Exp where
 pattern LInt :: Int -> Exp a
 pattern LInt i = Lit (LitInt i)
 
-pattern LTrue :: Exp a
-pattern LTrue = LCon "True"
-
-pattern LFalse :: Exp a
-pattern LFalse = LCon "False"
-
-pattern LUnit :: Exp a
-pattern LUnit = LCon "Unit"
-
 pattern LString :: String -> Exp a
 pattern LString s = Lit (LitString s)
 

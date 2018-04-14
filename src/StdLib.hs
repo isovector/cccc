@@ -36,20 +36,20 @@ classEnv = ClassEnv
               [ ( PFalse
                 , case_ "y"
                   [ ( PFalse
-                    , LTrue
+                    , "True"
                     )
                   , ( PWildcard
-                    , LFalse
+                    , "False"
                     )
                   ]
                 )
               , ( PTrue
                 , case_ "y"
                   [ ( PTrue
-                    , LTrue
+                    , "True"
                     )
                   , ( PWildcard
-                    , LFalse
+                    , "False"
                     )
                   ]
                 )
@@ -60,7 +60,7 @@ classEnv = ClassEnv
   , ( IsInst "Eq" TUnit
     , InstRep ([] :=> ())
     $ [ ( "=="
-        , lam "x" $ lam "y" $ LTrue
+        , lam "x" $ lam "y" "True"
         )
       ]
     )

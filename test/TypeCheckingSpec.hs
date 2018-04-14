@@ -119,7 +119,7 @@ spec = do
     typeError $ "fst" :@ "Inl"
     typeError $
       case_ "Unit"
-        [ (PWildcard, LUnit)
+        [ (PWildcard, "Unit")
         , (PWildcard, LInt 5)
         ]
     typeError $
