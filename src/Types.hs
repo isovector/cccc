@@ -284,6 +284,24 @@ deriving instance Eq a   => Eq (Exp a)
 deriving instance {-# OVERLAPPABLE #-} Show a => Show (Exp a)
 deriving instance Show Scheme
 
+
+data GenDataCon = GenDataCon
+  { gdcName      :: VName
+  , gdcConType   :: Qual Type
+  , gdcFinalType :: Qual Type
+  , gdcCon       :: Exp VName
+  } deriving (Eq, Show)
+
+
+data CompUnit = CompUnit
+  { cuClasses :: [Class]
+  , cuInsts   :: [InstRep Pred]
+  , cuGDCs    :: [GenDataCon]
+  , cuRecords :: [(GenDataCon, [(VName, (Qual Type, Exp VName))])]
+  , cuDecls   :: Map VName (Qual Type, Exp VName)
+  } deriving (Eq, Show)
+
+
 instance Show (Exp VName) where
   showsPrec x (V a) =
     showParen ((||) <$> all ((||) <$> isSymbol <*> isPunctuation) <*> elem ' ' $ unVName a)
@@ -354,7 +372,7 @@ instance Show Pred where
 
 
 data Class = Class
-  { cVars    :: [TName]
+  { cVars    :: TName
   , cName    :: TName
   , cMethods :: Map VName (Qual Type)
   } deriving (Eq, Ord, Show)

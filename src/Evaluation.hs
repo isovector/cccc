@@ -14,6 +14,7 @@ import           Data.Monoid ((<>))
 import           TypeChecking
 import           Types
 import           Utils
+import Compiler
 
 
 extract :: Pat -> Exp VName -> Maybe [(VName, Exp VName)]

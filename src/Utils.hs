@@ -77,13 +77,6 @@ kind (a :@@ b) = do
     KStar -> kerr KStar
 
 
-data GenDataCon = GenDataCon
-  { gdcName      :: VName
-  , gdcConType   :: Qual Type
-  , gdcFinalType :: Qual Type
-  , gdcCon       :: Exp VName
-  } deriving (Eq, Show)
-
 
 buildDataCon
     :: VName
