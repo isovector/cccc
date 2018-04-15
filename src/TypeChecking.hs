@@ -54,7 +54,10 @@ newTyVar k = do
   pure . TVar . flip TFreshName k $ letters !! n
 
 
-freshInst :: VName -> Scheme -> TI (Qual Type, Placeholder (Exp VName))
+freshInst
+    :: VName
+    -> Scheme
+    -> TI (Qual Type, Placeholder (Exp VName))
 freshInst n (Scheme vars t) = do
   nvars <- traverse newTyVar $ fmap tKind vars
   let subst = Subst $ M.fromList (zip vars nvars)
@@ -128,12 +131,21 @@ infer env (Assert e t) = do
   unify t t1
   s <- view tiSubst <$> get
   pure (sub s p1, t, Assert <$> h1 <*> pure t)
+
 infer (SymTable env) (V a) =
   case M.lookup a env of
     Nothing -> throwE $ "unbound variable: '" <> show a <> "'"
     Just sigma -> do
       (ps :=> x, h) <- freshInst a sigma
       pure (ps, x, h)
+
+infer (SymTable env) z@(LCon a) =
+  case M.lookup a env of
+    Nothing -> throwE $ "unbound variable: '" <> show a <> "'"
+    Just sigma -> do
+      (ps :=> x, _) <- freshInst a sigma
+      pure (ps, x, pure z)
+
 infer env (Let n e1 b) = do
   name <- newVName "v"
   let e2 = splatter name b
@@ -143,9 +155,6 @@ infer env (Let n e1 b) = do
   (p2, t2, h2) <- infer env' e2
   pure (p2, t2, let_ <$> pure n <*> h1 <*> h2)
 infer _ h@(Lit l) = pure (mempty, inferLit l, pure h)
-
--- TODO(sandy): maybe this is wrong?
-infer env (LCon a) = infer env (V a)
 
 infer env (Case e ps) = do
   t <- newTyVar KStar
@@ -212,11 +221,11 @@ inferPattern st (PCon c ps) = do
 
 typeInference
     :: ClassEnv
-    -> Map VName Scheme
+    -> SymTable VName
     -> Exp VName
     -> TI ((Qual Type, Type), Exp VName)
-typeInference cenv env e = do
-  (ps, t, h) <- infer (SymTable env) e
+typeInference cenv sym e = do
+  (ps, t, h) <- infer sym e
   s <- view tiSubst <$> get
   zs <- traverse (discharge cenv) $ sub (flatten s) ps
   let (s', ps', m, as, _) = mconcat zs

@@ -18,7 +18,7 @@ import           Control.Lens ((<&>))
 import           Control.Monad.State
 import           Data.Bifunctor (second)
 import           Data.Bool (bool)
-import           Data.Char (isLower, isSymbol, isPunctuation)
+import           Data.Char (isLower, isUpper, isSymbol, isPunctuation)
 import           Data.Eq.Deriving (deriveEq1)
 import           Data.List (intercalate)
 import           Data.Map (Map)
@@ -168,18 +168,6 @@ pattern PTrue :: Pat
 pattern PTrue = PCon "True" []
 
 
-instance Show Pat where
-  showsPrec _ PWildcard  = showString "_"
-  showsPrec _ (PVar x)   = showString $ show x
-  showsPrec _ (PAs x p)  =
-      showString (show x)
-    . showString "@"
-    . showsPrec 10 p
-  showsPrec _ (PLit l) = showString $ show l
-  showsPrec x (PCon n ps)  = showParen (x > 0)
-    $ showString (show $ V n)
-    . foldl (.) id (fmap ((showString " " .) . showsPrec 10) ps)
-
 
 -- | a new variable to introduce
 data Assump a = (:>:)
@@ -237,9 +225,9 @@ instance Show Lit where
 
 instance IsString a => IsString (Exp a) where
   fromString x =
-    case isLower $ head x of
-      False -> LCon $ fromString x
-      True  -> V $ fromString x
+    case isUpper $ head x of
+      True  -> LCon $ fromString x
+      False -> V $ fromString x
 
 
 instance Applicative Exp where
@@ -284,6 +272,18 @@ deriving instance Eq a   => Eq (Exp a)
 deriving instance {-# OVERLAPPABLE #-} Show a => Show (Exp a)
 deriving instance Show Scheme
 
+instance Show Pat where
+  showsPrec _ PWildcard  = showString "_"
+  showsPrec _ (PVar x)   = showString $ show x
+  showsPrec _ (PAs x p)  =
+      showString (show x)
+    . showString "@"
+    . showsPrec 10 p
+  showsPrec _ (PLit l) = showString $ show l
+  showsPrec x (PCon n ps)  = showParen (x > 0)
+    $ showsPrec 10 (LCon n :: Exp VName)
+    . foldl (.) id (fmap ((showString " " .) . showsPrec 10) ps)
+
 
 data GenDataCon = GenDataCon
   { gdcName      :: VName
@@ -307,7 +307,8 @@ instance Show (Exp VName) where
     showParen ((||) <$> all ((||) <$> isSymbol <*> isPunctuation) <*> elem ' ' $ unVName a)
       $ showsPrec x a
   showsPrec x (LCon a) =
-    showsPrec x $ TCon (TName (unVName a) KStar)
+    showsPrec x (TCon (TName (unVName a) KStar))
+    . showString "#"
   showsPrec x (V "." :@ a :@ b) =
     showParen (x >= 9)
       $ showsPrec 9 a

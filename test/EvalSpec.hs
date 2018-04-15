@@ -8,7 +8,7 @@ import           Data.Bool (bool)
 import           Data.Foldable (for_)
 import qualified Data.Map as M
 import           Data.Monoid ((<>))
-import           Evaluation
+import           Evaluation hiding (eval)
 import           StdLib
 import           Test.Hspec
 import           TypeChecking

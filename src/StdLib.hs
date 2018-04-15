@@ -4,6 +4,7 @@
 
 module StdLib where
 
+import           Compiler
 import           Control.Arrow ((***))
 import           Control.Monad (join)
 import           Data.Bifunctor (first, second)
@@ -12,16 +13,15 @@ import qualified Data.Map as M
 import           Data.Monoid ((<>))
 import           TypeChecking
 import           Types
-import           Evaluation
 import           Utils
 
 
 classes :: [Class]
 classes =
-  [ Class ["a"]
+  [ Class "a"
           "Eq"
         $ M.fromList [("==", [] :=> "a" :-> "a" :-> TBool)]
-  , Class ["a"] "Category" []
+  , Class "a" "Category" []
   ]
 
 classGDCs :: Map TName (GenDataCon, [(VName, (Qual Type, Exp VName))])
@@ -221,7 +221,7 @@ stdLib' =
 test'' :: Exp VName -> Either String ((Qual Type, Type), Exp VName)
 test'' = second (first (first normalizeType))
       . runTI
-      . typeInference classEnv stdLib
+      . typeInference classEnv (SymTable stdLib)
 
 
 test' :: Exp VName -> Either String (Qual Type)

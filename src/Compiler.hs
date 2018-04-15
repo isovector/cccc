@@ -1,4 +1,6 @@
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections     #-}
+{-# LANGUAGE TypeApplications  #-}
 
 module Compiler where
 
@@ -14,7 +16,8 @@ import           Types
 import           Utils
 
 prelude :: Map VName (Exp VName)
-Right (prelude, _, _) = runTI $ compile preludeSource
+preludeEnv :: (ClassEnv, SymTable VName)
+Right (prelude, preludeEnv) = runTI $ compile preludeSource
 
 preludeSource :: CompUnit
 preludeSource = CompUnit
@@ -92,9 +95,9 @@ preludeSource = CompUnit
     ]
 
   , cuDecls = M.fromList
-    [ ( "eq"
-      , ( [IsInst "Eq" "a"] :=> "a" :-> "a" :-> TBool
-        , "=="
+    [ ( "undefined"
+      , ( [] :=> "a"
+        , "undefined"
         )
       )
     ]
@@ -107,12 +110,12 @@ getGDCBinding gdc = (gdcName gdc, (gdcConType gdc, gdcCon gdc))
 
 genMethods :: Class -> Map VName (Qual Type, Exp VName)
 genMethods c = flip M.mapWithKey (cMethods c) $ \k m ->
-  ( IsInst (cName c) (TCon $ cVars c) : qualPreds m :=> unqualType m
+  ( IsInst (cName c) (TVar $ cVars c) : qualPreds m :=> unqualType m
   , V k
   )
 
 
-compile :: CompUnit -> TI (Map VName (Exp VName), ClassEnv, SymTable VName)
+compile :: CompUnit -> TI (Map VName (Exp VName), (ClassEnv, SymTable VName))
 compile cu = do
   -- build classes
   let classes = cuClasses cu
@@ -149,15 +152,14 @@ compile cu = do
         , M.fromList instDicts
         , cuDecls cu
         , M.fromList . join . fmap snd $ cuRecords cu
-
         ] <> fmap genMethods classes
 
   -- build initial symbol table
   let sym = SymTable $ fmap (generalize (SymTable @VName mempty) . fst) allDefs
 
   defs <- for (fmap snd allDefs) $ \i -> do
-    (_, e) <- typeInference cenv (unSymTable sym) i
+    (_, e) <- typeInference cenv sym i
     pure e
 
-  pure (defs, cenv, sym)
+  pure (defs, (cenv, sym))
 

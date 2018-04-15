@@ -1,20 +1,22 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections     #-}
 {-# LANGUAGE ViewPatterns      #-}
 {-# OPTIONS_GHC -Wall          #-}
 
 module Evaluation where
 
 import           Bound
+import           Compiler
 import           Control.Lens ((<&>))
 import           Control.Monad (join)
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Maybe (mapMaybe)
 import           Data.Monoid ((<>))
+import           StdLib
 import           TypeChecking
 import           Types
 import           Utils
-import Compiler
 
 
 extract :: Pat -> Exp VName -> Maybe [(VName, Exp VName)]
@@ -41,7 +43,7 @@ whnf :: Map VName (Exp VName) -> Exp VName -> Exp VName
 whnf std (V name) =
   case M.lookup name std of
     Just x  -> x
-    Nothing -> V name
+    Nothing -> error $ "variable '" <> show name <> "' not in scope"
 whnf _ z@(LCon _) = z
 whnf std (f :@ a) =
   case whnf std f of
@@ -56,4 +58,15 @@ whnf std (Case e ps)  =
      extract p e' <&> \(M.fromList -> vs) ->
        instantiate (vs M.!) v
 whnf _ z@(Lam _ _)    = z
+
+
+eval
+    :: Map VName (Exp VName)
+    -> (ClassEnv, SymTable VName)
+    -> Exp VName
+    -> Exp VName
+eval std (cenv, sym) e =
+  case runTI $ typeInference cenv sym e of
+    Left e -> error $ "failed to compile:\n" <> e
+    Right (_, e') -> whnf std e'
 
