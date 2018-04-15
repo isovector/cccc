@@ -12,8 +12,8 @@ import           Bound
 import           Bound.Scope
 import           Control.Applicative ((<|>))
 import           Control.Lens ((<&>), view, (%~), (<>~))
-import           Control.Monad.State
 import           Control.Monad.Reader
+import           Control.Monad.State
 import           Control.Monad.Trans.Except
 import           Data.Bifunctor
 import           Data.Bool (bool)
@@ -69,7 +69,9 @@ liftPlaceholders
 liftPlaceholders name ps = do
   f <- ask
   let dicts = fmap f ps
-  pure $ foldl (:@) (V name) dicts
+  pure $ case length dicts of
+    0 -> V name
+    _ -> foldl (:@) (V $ VName $ "@" <> unVName name) dicts
 
 
 mgu :: Type -> Type -> TI Subst
@@ -162,13 +164,12 @@ infer env (Case e ps) = do
 
   pure (p1 <> join p2, t, case_ <$> h1 <*> sequence h2)
 
-infer (SymTable env) (Lam n x) = do
-  name <- newVName "v"
+infer (SymTable env) (Lam name x) = do
   tv <- newTyVar KStar
   let env' = SymTable $ env <> [(name, mkScheme tv)]
       e = splatter name x
   (p1, t1, h1) <- infer env' e
-  pure (p1, TArr tv t1, lam <$> pure n <*> h1)
+  pure (p1, TArr tv t1, lam <$> pure name <*> h1)
 
 infer env exp@(e1 :@ e2) =
   do
@@ -213,17 +214,21 @@ typeInference
     :: ClassEnv
     -> Map VName Scheme
     -> Exp VName
-    -> TI (Qual Type, Exp VName)
+    -> TI ((Qual Type, Type), Exp VName)
 typeInference cenv env e = do
   (ps, t, h) <- infer (SymTable env) e
   s <- view tiSubst <$> get
   zs <- traverse (discharge cenv) $ sub (flatten s) ps
-  let (s', ps', _, _) = mconcat zs
+  let (s', ps', m, as, _) = mconcat zs
       s'' = flatten $ s <> s'
       (ps'' :=> t') = sub s'' $ ps' :=> t
       t'' = nub ps'' :=> t'
+      m'  = M.mapKeys (sub s'') m
+      h'  = runReader h $ (M.!) m' . sub s''
+      e'  = foldr lam h' $ fmap assumpName as
+      te' = foldr (:->) (unqualType t'') $ fmap assumpVal as
   _ <- errorAmbiguous t''
-  pure (t'', runReader h $ V . VName . show . sub s'')
+  pure ((t'', te'), e')
 
 
 flatten :: Subst -> Subst
@@ -239,49 +244,35 @@ generalize env t =
   Scheme (S.toList $ free t S.\\ free env) t
 
 
-generalizing :: SymTable a -> Qual Type -> Scheme
-generalizing env t =
-  Scheme (S.toList $ free t S.\\ free env) t
-
-
-normalizeType :: Qual Type -> Qual Type
-normalizeType = schemeType . normalize . Scheme mempty
-
-
-normalize :: Scheme -> Scheme
-normalize (Scheme _ body) =
-    Scheme (fmap snd ord) $ normqual body
-  where
-    ord = zip (nub . S.toList $ free body) letters <&> \(old, l) ->
-      (old, TName l $ tKind old)
-    normqual (xs :=> zs) =
-      fmap (\(IsInst c t) -> IsInst c $ normtype t) xs :=> normtype zs
-
-    normtype (TCon a)    = TCon a
-    normtype (a :@@ b)   = normtype a :@@ normtype b
-    normtype (TVar a)    =
-      case lookup a ord of
-        Just x  -> TVar $ TName (unTName x) (tKind x)
-        Nothing -> error "type variable not in signature"
-
-
 discharge
     :: ClassEnv
     -> Pred
     -> TI ( Subst
           , [Pred]
           , Map Pred (Exp VName)
-          , [Assump (Qual Type)]
+          , [Assump Type]
+          , [Exp VName]
           )
 discharge cenv p = do
   x <- for (getQuals cenv) $ \(a :=> b) -> do
     s <- (fmap (a,) <$> match' b p) <|> pure Nothing
     pure $ First s
   case getFirst $ mconcat x of
-    Just (ps, s) ->
-      fmap mconcat $ traverse (discharge cenv) $ sub s $ ps
+    Just (ps, s) -> do
+      (s', ps', mp, as, ds) <- fmap mconcat
+                         . traverse (discharge cenv)
+                         $ sub s ps
+      let d = V . VName $ getDict p
+          e = foldl (:@) d ds
+      pure $ (s', ps', mp <> M.singleton p e, as, pure e)
     Nothing -> do
-      pure $ (mempty, pure p, mempty, mempty)
+      param <- newVName "d"
+      pure ( mempty
+           , pure p
+           , M.singleton p $ V param
+           , pure $ param :>: getDictTypeForPred p
+           , pure $ V param
+           )
 
 
 errorAmbiguous :: Qual Type -> TI (Qual Type)

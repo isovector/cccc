@@ -22,9 +22,12 @@ extract (PAs i p) a      = (:) <$> pure (i, a) <*> extract p a
 extract PWildcard _      = pure []
 extract (PCon c ps) a
   | Just (c', as) <- unravel a
-  , c == c'              = if length ps /= length as
-                              then error $ "bad number of pattern ctors to " <> show c
-                              else fmap join . traverse (uncurry extract) $ zip ps as
+  , c == c'              =
+      if length ps /= length as
+         then error $ "bad number of pattern ctors to " <> show c
+         else fmap join
+            . traverse (uncurry extract)
+            $ zip ps as
 extract (PCon _ _) _     = Nothing
 extract (PLit l) (Lit l')
     | l == l'            = Just []

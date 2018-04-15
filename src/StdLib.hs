@@ -4,6 +4,7 @@
 
 module StdLib where
 
+import           Control.Arrow ((***))
 import           Control.Monad (join)
 import           Data.Bifunctor (first, second)
 import           Data.Map (Map)
@@ -11,6 +12,7 @@ import qualified Data.Map as M
 import           Data.Monoid ((<>))
 import           TypeChecking
 import           Types
+import           Evaluation
 import           Utils
 
 
@@ -22,7 +24,7 @@ classes =
   , Class ["a"] "Category" []
   ]
 
-classGDCs :: Map CName (GenDataCon, [(VName, (Qual Type, Exp VName))])
+classGDCs :: Map TName (GenDataCon, [(VName, (Qual Type, Exp VName))])
 classGDCs = M.fromList $ zip (fmap cName classes) $ fmap buildDictType classes
 
 
@@ -81,8 +83,31 @@ classEnv = ClassEnv
     )
   , ( IsInst "Eq" (TSum "a" "b")
     , InstRep ([IsInst "Eq" "a", IsInst "Eq" "b"] :=> ())
-    $ [ ( "==", "undefined" )
-      ]
+    $ [ ( "=="
+        , lam "x" $ lam "y" $
+            case_ "x"
+              [ ( PCon "inl" ["x1"]
+                , case_ "y"
+                  [ ( PCon "inl" ["y1"]
+                    , "==" :@ "x1" :@ "y2"
+                    )
+                  , ( PWildcard
+                    , "False"
+                    )
+                  ]
+                )
+              , ( PCon "inr" ["x1"]
+                , case_ "y"
+                  [ ( PCon "inr" ["y1"]
+                    , "==" :@ "x1" :@ "y2"
+                    )
+                  , ( PWildcard
+                    , "False"
+                    )
+                  ]
+                )
+              ]
+        ) ]
     )
 
   , ( IsInst "Category" TArrCon
@@ -193,21 +218,22 @@ stdLib' =
         $ getInstReps classEnv)
 
 
-test'' :: Exp VName -> Either String (Qual Type, Exp VName)
-test'' = second (first normalizeType)
+test'' :: Exp VName -> Either String ((Qual Type, Type), Exp VName)
+test'' = second (first (first normalizeType))
       . runTI
       . typeInference classEnv stdLib
 
 
 test' :: Exp VName -> Either String (Qual Type)
-test' = fmap fst . test''
+test' = fmap (fst . fst) . test''
 
 
 test :: Exp VName -> IO ()
 test x =
   case test'' x of
     Left e  -> putStrLn e
-    Right (t, e) -> do
+    Right ((t, t'), e) -> do
       putStrLn $ show t
+      putStrLn $ show t'
       putStrLn $ show e
 

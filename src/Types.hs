@@ -43,12 +43,14 @@ data Type
 infixr 9 :>>
 data Kind
   = KStar
+  | KConstraint
   | Kind :>> Kind
   deriving (Eq, Ord)
 
 
 instance Show Kind where
   showsPrec _ KStar  = showString "*"
+  showsPrec _ KConstraint  = showString "Constraint"
   showsPrec x (a :>> b)  = showParen (x > 0)
     $ showsPrec 1 a
     . showString " -> "
@@ -114,7 +116,7 @@ instance Show Type where
   showsPrec _ (TVar n)    = showString $ unTName n
   showsPrec _ (TCon n)    =
     showParen (all ((||) <$> isSymbol <*> isPunctuation) $ unTName n)
-    $ showString $ unTName n <> "!"
+    $ showString $ unTName n
   showsPrec x (a :@@ b)   = showParen (x > 9)
     $ showsPrec 9 a
     . showString " "
@@ -180,8 +182,10 @@ instance Show Pat where
 
 
 -- | a new variable to introduce
-data Assump a
-  = VName :>: a
+data Assump a = (:>:)
+  { assumpName :: VName
+  , assumpVal :: a
+  }
   deriving (Eq, Ord, Show)
 
 
@@ -203,14 +207,9 @@ data Qual t = (:=>)
   } deriving (Eq, Ord, Functor, Traversable, Foldable)
 
 data Pred = IsInst
-  { predCName :: CName
+  { predCName :: TName
   , predInst  :: Type
   } deriving (Eq, Ord)
-
-
-newtype CName = CName { unCName :: String }
-  deriving (Eq, Ord, IsString, Monoid)
-
 
 
 infixl 9 :@
@@ -287,7 +286,7 @@ deriving instance Show Scheme
 
 instance Show (Exp VName) where
   showsPrec x (V a) =
-    showParen (all ((||) <$> isSymbol <*> isPunctuation) $ unVName a)
+    showParen ((||) <$> all ((||) <$> isSymbol <*> isPunctuation) <*> elem ' ' $ unVName a)
       $ showsPrec x a
   showsPrec x (LCon a) =
     showsPrec x $ TCon (TName (unVName a) KStar)
@@ -353,13 +352,10 @@ instance Show Pred where
   show (IsInst a b) = show a <> " (" <> show b <> ")"
 
 
-instance Show CName where
-  show = unCName
-
 
 data Class = Class
   { cVars    :: [TName]
-  , cName    :: CName
+  , cName    :: TName
   , cMethods :: Map VName (Qual Type)
   } deriving (Eq, Ord, Show)
 
