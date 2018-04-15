@@ -1,36 +1,34 @@
 {-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications  #-}
+{-# OPTIONS_GHC -Wall          #-}
 
 module StdLib where
 
-import           Control.Monad (join)
+import           Compiler
 import           Data.Bifunctor (first, second)
 import           Data.Map (Map)
 import qualified Data.Map as M
-import           Data.Monoid ((<>))
 import           TypeChecking
 import           Types
 import           Utils
 
 
-classes :: [Class]
-classes =
-  [ Class ["a"]
-          "Eq"
-        $ M.fromList [("==", [] :=> "a" :-> "a" :-> TBool)]
-  , Class ["a"] "Category" []
-  ]
+prelude :: Map VName (Exp VName)
+preludeEnv :: (ClassEnv, SymTable VName)
+Right (prelude, preludeEnv) = runTI $ compile preludeSource
 
-classGDCs :: Map CName (GenDataCon, [(VName, (Qual Type, Exp VName))])
-classGDCs = M.fromList $ zip (fmap cName classes) $ fmap buildDictType classes
+preludeSource :: CompUnit
+preludeSource = CompUnit
+  { cuClasses =
+    [ Class "a" "Eq"
+      $ M.fromList [("==", [] :=> "a" :-> "a" :-> TBool)]
+    , Class "a" "Category" mempty
+    ]
 
-
-classEnv :: ClassEnv
-classEnv = ClassEnv
-  [ ( IsInst "Eq" TBool
-    , InstRep ([] :=> ())
-    $ [ ( "=="
+  , cuInsts =
+    [ InstRep ([] :=> IsInst "Eq" TBool) $ M.fromList
+      [ ( "=="
         , lam "x" $ lam "y" $
             case_ "x"
               [ ( PFalse
@@ -53,155 +51,167 @@ classEnv = ClassEnv
                     )
                   ]
                 )
-              ]
-        )
+              ])
       ]
-    )
-  , ( IsInst "Eq" TUnit
-    , InstRep ([] :=> ())
-    $ [ ( "=="
+
+    , InstRep ([IsInst "Eq" "a", IsInst "Eq" "b"]
+        :=> IsInst "Eq" (TProd "a" "b"))
+      $ M.fromList
+      [ ( "=="
+        , lam "x" $ lam "y" $
+            case_ (LProd "x" "y")
+              [ ( PProd (PProd "l1" "r1") (PProd "l2" "r2")
+                , "&&" :@ ("==" :@ "l1" :@ "l2")
+                       :@ ("==" :@ "r1" :@ "r2")
+                )
+              ])
+      ]
+
+    , InstRep ([IsInst "Eq" "a", IsInst "Eq" "b"]
+        :=> IsInst "Eq" (TSum "a" "b"))
+      $ M.fromList
+      [ ( "=="
+        , lam "x" $ lam "y" $
+            case_ "x"
+              [ ( PCon "Inl" ["x1"]
+                , case_ "y"
+                  [ ( PCon "Inl" ["y1"]
+                    , "==" :@ "x1" :@ "y1"
+                    )
+                  , ( PWildcard
+                    , "False"
+                    )
+                  ]
+                )
+              , ( PCon "Inr" ["x1"]
+                , case_ "y"
+                  [ ( PCon "Inr" ["y1"]
+                    , "==" :@ "x1" :@ "y1"
+                    )
+                  , ( PWildcard
+                    , "False"
+                    )
+                  ]
+                )
+              ])
+      ]
+
+    , InstRep ([] :=> IsInst "Eq" TUnit)
+      $ M.fromList
+      [ ( "=="
         , lam "x" $ lam "y" "True"
         )
       ]
-    )
-  , ( IsInst "Eq" TInt
-    , InstRep ([] :=> ())
-    $ [ ( "==", "undefined" )
+
+    , InstRep ([] :=> IsInst "Eq" TInt)
+      $ M.fromList
+      [ ( "=="
+        , "error" :@ LString "eq not defined for ints yet"
+        )
       ]
-    )
-  , ( IsInst "Eq" TString
-    , InstRep ([] :=> ())
-    $ [ ( "==", "undefined" )
-      ]
-    )
-  , ( IsInst "Eq" (TProd "a" "b")
-    , InstRep ([IsInst "Eq" "a", IsInst "Eq" "b"] :=> ())
-    $ [ ( "==", "undefined" )
-      ]
-    )
-  , ( IsInst "Eq" (TSum "a" "b")
-    , InstRep ([IsInst "Eq" "a", IsInst "Eq" "b"] :=> ())
-    $ [ ( "==", "undefined" )
-      ]
-    )
 
-  , ( IsInst "Category" TArrCon
-    , InstRep ([] :=> ())
-    $ []
-    )
-  ]
+    , InstRep ([] :=> IsInst "Category" TArrCon) mempty
 
+    ]
 
-stdLib :: Map VName Scheme
-stdLib = fmap (generalize $ SymTable @VName mempty) $ fmap fst stdLib'
+  , cuGDCs =
+    [ buildDataCon "Inl" ["a"] . Just $ TSum "a" "b"
+    , buildDataCon "Inr" ["b"] . Just $ TSum "a" "b"
+    , buildDataCon "False" []  . Just $ TBool
+    , buildDataCon "True" []   . Just $ TBool
+    , buildDataCon "Unit" []   . Just $ TUnit
+    ]
 
-evalLib :: Map VName (Exp VName)
-evalLib = fmap snd stdLib'
-
-
-toStdLib :: GenDataCon -> (VName, (Qual Type, Exp VName))
-toStdLib g = (gdcName g, (gdcConType g, gdcCon g))
-
-
-stdLib' :: Map VName (Qual Type, Exp VName)
-stdLib' =
-  [ ("swap",
-      ( [] :=> TProd "a" "b" :-> TProd "b" "a"
-      , lam "z" $ LProd ("snd" :@ "z") ("fst" :@ "z")
-      ))
-  , ("shouldInline",
-      ( [IsInst "ToInline" "a"] :=> "a" :-> "a"
-      , "id"
-      ))
-  , ( toStdLib $ buildDataCon "Inl" ["a"] $ Just $ TSum "a" "b" )
-  , ( toStdLib $ buildDataCon "Inr" ["b"] $ Just $ TSum "a" "b" )
-  , ( toStdLib $ buildDataCon "False" [] $ Just $ TBool )
-  , ( toStdLib $ buildDataCon "True" [] $ Just $ TBool )
-  , ( toStdLib $ buildDataCon "Unit" [] $ Just TUnit )
-  , ("proj",
-      ( []
-          :=> ("a" :-> "c")
-          :-> ("b" :-> "c")
-          :-> TSum "a" "b"
-          :-> "c"
-      , lam "f" $ lam "g" $ lam "e" $
-          case_ "e"
-            [ ( PCon "Inl" [PVar "x"], "f" :@ "x")
-            , ( PCon "Inr" [PVar "y"], "g" :@ "y")
-            ]
-      ))
-  , (".",
-      ( [CCat "k"]
-          :=> TCat "k" "b" "c"
-          :-> TCat "k" "a" "b"
-          :-> TCat "k" "a" "c"
-      , lam "g" . lam "f" . lam "x" $ "g" :@ ("f" :@ "x")
-      ))
-  , ("apply",
-      ( [CCat "k"]
-          :=> (TCat "k" (TProd ("a" :-> "b") "a") "b")
-      , "undefined"
-      ))
-  , ("curry",
-      ( [CCat "k"]
-          :=> TCat "k" (TProd "a" "b") "c"
-          :-> TCat "k" "a" ("b" :-> "c")
-      , "undefined"
-      ))
-  , ("fork",
-      ( [CCat "k"]
-          :=> TCat "k" "a" "c"
-          :-> TCat "k" "a" "d"
-          :-> TCat "k" "a" (TProd "c" "d")
-      , "undefined"
-      ))
-  , ("==",
-      ( [IsInst "Eq" "a"] :=> "a" :-> "a" :-> TBool
-      , "undefined"
-      ))
-  , ("id",
-      ( [CCat "k"] :=> TCat "k" "a" "a"
-      , lam "x" "x"
-      ))
-  , ("const",
-      ( [CCat "k"]
-          :=> "b"
-          :-> TCat "k" "a" "b"
-      , lam "x" $ lam "y" $ "x"
-      ))
-  , ("ccc",
-      ( [CCat "k"]
-          :=> ("a" :-> "b") :-> TSum (TCat "k" "a" "b") TUnit
-      , "undefined"
-      ))
-  , ("error",
-      ( [] :=> TString :-> "a"
-      , "undefined"
-      ))
-  , ("undefined",
-      ( [] :=> "a"
-      , "error" :@ LString "undefined"
-      ))
-  ] <>
-  M.fromList ( join $ fmap (\(gdc, zs) -> toStdLib gdc : zs) $
+  , cuRecords =
     [ buildRecord "," [("fst", "a"), ("snd", "b")] Nothing
-    ] <> fmap buildDictType classes
-    )
-  <> M.fromList
-      (fmap (\c@(InstRep (_ :=> IsInst cname _) _) ->
-            buildDict (fst $ classGDCs M.! cname) c)
-        $ getInstReps classEnv)
+    ]
+
+  , cuDecls = M.fromList
+    [ ( "undefined"
+      , ( [] :=> "a"
+        , "error" :@ LString "undefined"
+        )
+      )
+
+    , ( "&&"
+      , ( [] :=> TBool :-> TBool :-> TBool
+        , lam "x" $ lam "y" $ case_ "x"
+            [ (PTrue,     "y")
+            , (PWildcard, "False")
+            ]
+        )
+      )
+
+    , ( "swap"
+      , ( [] :=> TProd "a" "b" :-> TProd "b" "a"
+        , lam "z" $ LProd ("snd" :@ "z") ("fst" :@ "z")
+        )
+      )
+
+    , ( "proj"
+      , ( []
+            :=> ("a" :-> "c")
+            :-> ("b" :-> "c")
+            :-> TSum "a" "b"
+            :-> "c"
+        , lam "f" $ lam "g" $ lam "e" $
+            case_ "e"
+              [ ( PCon "Inl" [PVar "x"], "f" :@ "x")
+              , ( PCon "Inr" [PVar "y"], "g" :@ "y")
+              ]
+        )
+      )
+
+    , ( "id"
+      , ( [CCat "k"] :=> TCat "k" "a" "a"
+        , lam "x" "x"
+        )
+      )
+
+    , ( "const"
+      , ( [CCat "k"]
+            :=> "b"
+            :-> TCat "k" "a" "b"
+        , lam "x" $ lam "y" $ "x"
+        )
+      )
+
+    , ( "."
+      , ( [CCat "k"]
+            :=> TCat "k" "b" "c"
+            :-> TCat "k" "a" "b"
+            :-> TCat "k" "a" "c"
+        , lam "f" $ lam "g" $ lam "x" $ "f" :@ ("g" :@ "x")
+        )
+      )
+
+    , ("error"
+      , ( [] :=> TString :-> "a"
+        , "undefined"
+        )
+      )
+
+    ]
+  }
+
+
+
+test'' :: Exp VName -> Either String ((Qual Type, Type), Exp VName)
+test'' = second (first (first normalizeType))
+      . runTI
+      . uncurry typeInference preludeEnv
 
 
 test' :: Exp VName -> Either String (Qual Type)
-test' = second normalizeType
-      . runTI
-      . typeInference classEnv stdLib
+test' = fmap (fst . fst) . test''
 
 
 test :: Exp VName -> IO ()
 test x =
-  case test' x of
+  case test'' x of
     Left e  -> putStrLn e
-    Right t -> putStrLn $ show t
+    Right ((t, t'), e) -> do
+      putStrLn $ show t
+      putStrLn $ show t'
+      putStrLn $ show e
 

@@ -1,6 +1,8 @@
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell   #-}
 {-# LANGUAGE TupleSections     #-}
+{-# OPTIONS_GHC -Wall  #-}
 
 module Utils where
 
@@ -8,10 +10,10 @@ import           Control.Lens ((<&>), makeLenses)
 import           Control.Monad.State
 import           Control.Monad.Trans.Except
 import           Data.Bifunctor (first, second)
+import           Data.List (nub)
 import qualified Data.Map as M
 import           Data.Monoid ((<>))
 import qualified Data.Set as S
-import           Data.Traversable (for)
 import           Debug.Trace  (trace)
 import           Types
 
@@ -73,15 +75,9 @@ kind (a :@@ b) = do
     kal :>> kar -> do
       when (kal /= kb) $ kerr kal
       pure kar
-    KStar -> kerr KStar
+    KStar       -> kerr KStar
+    KConstraint -> kerr KConstraint
 
-
-data GenDataCon = GenDataCon
-  { gdcName      :: VName
-  , gdcConType   :: Qual Type
-  , gdcFinalType :: Qual Type
-  , gdcCon       :: Exp VName
-  } deriving (Eq, Show)
 
 
 buildDataCon
@@ -121,11 +117,20 @@ buildRecord n fs t =
           $ [(PCon n p, "p")]
 
 
-getDictName :: CName -> String
-getDictName n = "@" <> unCName n
+getDictName :: TName -> Type
+getDictName n = TCon . TName (getDictName2 n) $ tKind n
+
+getDictName2 :: TName -> String
+getDictName2 n = "@" <> unTName n
+
+
+getDictTypeForPred :: Pred -> Type
+getDictTypeForPred (IsInst c t) = getDictName c :@@ t
 
 getDict :: Pred -> String
-getDict (IsInst c t) = "@" <> show c <> "@" <> show t
+getDict (IsInst c t) = "@" <> show c <> "@" <> show (normalizeType2 t)
+
+
 
 
 buildDictType
@@ -139,11 +144,11 @@ buildDictType (Class _ n ms) =
     Nothing
     -- (Just $ TCon (TName name KStar))
   where
-    name = getDictName n
+    name = getDictName2 n
 
 
 buildDict :: GenDataCon -> InstRep Pred -> (VName, (Qual Type, Exp VName))
-buildDict gdc (InstRep (qs :=> i@(IsInst c t)) impls) =
+buildDict gdc (InstRep (_ :=> i@(IsInst c t)) impls) =
     (VName dict,)
       -- TODO(sandy): buggy; doesn't do nested dicts
       -- TODO(sandy): also buggy. we should just run the type checker on this
@@ -151,5 +156,30 @@ buildDict gdc (InstRep (qs :=> i@(IsInst c t)) impls) =
       $ foldl (:@) (LCon (VName dname)) $ M.elems impls
   where
     dict = getDict i
-    dname = getDictName c
+    dname = getDictName2 c
+
+
+normalizeType :: Qual Type -> Qual Type
+normalizeType = schemeType . normalize . Scheme mempty
+
+
+normalizeType2 :: Type -> Type
+normalizeType2 = unqualType . normalizeType . ([] :=>)
+
+
+normalize :: Scheme -> Scheme
+normalize (Scheme _ body) =
+    Scheme (fmap snd ord) $ normqual body
+  where
+    ord = zip (nub . S.toList $ free body) letters <&> \(old, l) ->
+      (old, TName l $ tKind old)
+    normqual (xs :=> zs) =
+      fmap (\(IsInst c t) -> IsInst c $ normtype t) xs :=> normtype zs
+
+    normtype (TCon a)    = TCon a
+    normtype (a :@@ b)   = normtype a :@@ normtype b
+    normtype (TVar a)    =
+      case lookup a ord of
+        Just x  -> TVar $ TName (unTName x) (tKind x)
+        Nothing -> error "type variable not in signature"
 

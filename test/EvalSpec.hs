@@ -8,7 +8,7 @@ import           Data.Bool (bool)
 import           Data.Foldable (for_)
 import qualified Data.Map as M
 import           Data.Monoid ((<>))
-import           Evaluation
+import           Evaluation hiding (eval)
 import           StdLib
 import           Test.Hspec
 import           TypeChecking
@@ -18,11 +18,16 @@ import           Utils
 
 eval :: Exp VName -> Exp VName -> SpecWith ()
 eval v e = it (show e <> " |=> " <> show v) $
-  whnf (fmap snd stdLib') e `shouldBe` v
+  whnf prelude e `shouldBe` v
+
+evalDicts :: Exp VName -> Exp VName -> SpecWith ()
+evalDicts v e = it (show e <> " |=> " <> show v) $ do
+  let Right (_, e') = test'' e
+  whnf prelude e' `shouldBe` v
 
 
 getDef :: VName -> Exp VName
-getDef n = fmap snd stdLib' M.! n
+getDef n = prelude M.! n
 
 
 spec :: Spec
@@ -82,8 +87,8 @@ spec = do
           b <- [False, True]
           pure (a, b)
     for_ apps $ \(a, b) ->
-      eval (bool "False" "True" $ a == b) $
-        getMethod "==" "Eq" TBool
+      evalDicts (bool "False" "True" $ a == b) $
+        "=="
           :@ bool "False" "True" a
           :@ bool "False" "True" b
 

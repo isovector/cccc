@@ -18,7 +18,7 @@ import           Control.Lens ((<&>))
 import           Control.Monad.State
 import           Data.Bifunctor (second)
 import           Data.Bool (bool)
-import           Data.Char (isLower, isSymbol, isPunctuation)
+import           Data.Char (isLower, isUpper, isSymbol, isPunctuation)
 import           Data.Eq.Deriving (deriveEq1)
 import           Data.List (intercalate)
 import           Data.Map (Map)
@@ -43,12 +43,14 @@ data Type
 infixr 9 :>>
 data Kind
   = KStar
+  | KConstraint
   | Kind :>> Kind
   deriving (Eq, Ord)
 
 
 instance Show Kind where
   showsPrec _ KStar  = showString "*"
+  showsPrec _ KConstraint  = showString "Constraint"
   showsPrec x (a :>> b)  = showParen (x > 0)
     $ showsPrec 1 a
     . showString " -> "
@@ -114,7 +116,7 @@ instance Show Type where
   showsPrec _ (TVar n)    = showString $ unTName n
   showsPrec _ (TCon n)    =
     showParen (all ((||) <$> isSymbol <*> isPunctuation) $ unTName n)
-    $ showString $ unTName n <> "!"
+    $ showString $ unTName n
   showsPrec x (a :@@ b)   = showParen (x > 9)
     $ showsPrec 9 a
     . showString " "
@@ -165,24 +167,17 @@ pattern PFalse = PCon "False" []
 pattern PTrue :: Pat
 pattern PTrue = PCon "True" []
 
+pattern PProd :: Pat -> Pat -> Pat
+pattern PProd a b = PCon "," [a, b]
 
-instance Show Pat where
-  showsPrec _ PWildcard  = showString "_"
-  showsPrec _ (PVar x)   = showString $ show x
-  showsPrec _ (PAs x p)  =
-      showString (show x)
-    . showString "@"
-    . showsPrec 10 p
-  showsPrec _ (PLit l) = showString $ show l
-  showsPrec x (PCon n ps)  = showParen (x > 0)
-    $ showString (show $ V n)
-    . foldl (.) id (fmap ((showString " " .) . showsPrec 10) ps)
 
 
 -- | a new variable to introduce
-data Assump
-  = VName :>: Scheme
-  deriving (Eq, Ord)
+data Assump a = (:>:)
+  { assumpName :: VName
+  , assumpVal :: a
+  }
+  deriving (Eq, Ord, Show)
 
 
 data Scheme = Scheme
@@ -203,14 +198,9 @@ data Qual t = (:=>)
   } deriving (Eq, Ord, Functor, Traversable, Foldable)
 
 data Pred = IsInst
-  { predCName :: CName
+  { predCName :: TName
   , predInst  :: Type
   } deriving (Eq, Ord)
-
-
-newtype CName = CName { unCName :: String }
-  deriving (Eq, Ord, IsString, Monoid)
-
 
 
 infixl 9 :@
@@ -238,9 +228,9 @@ instance Show Lit where
 
 instance IsString a => IsString (Exp a) where
   fromString x =
-    case isLower $ head x of
-      False -> LCon $ fromString x
-      True  -> V $ fromString x
+    case isUpper $ head x of
+      True  -> LCon $ fromString x
+      False -> V $ fromString x
 
 
 instance Applicative Exp where
@@ -284,14 +274,44 @@ deriveShow1 ''Exp
 deriving instance Eq a   => Eq (Exp a)
 deriving instance {-# OVERLAPPABLE #-} Show a => Show (Exp a)
 deriving instance Show Scheme
-deriving instance Show Assump
+
+instance Show Pat where
+  showsPrec _ PWildcard  = showString "_"
+  showsPrec _ (PVar x)   = showString $ show x
+  showsPrec _ (PAs x p)  =
+      showString (show x)
+    . showString "@"
+    . showsPrec 10 p
+  showsPrec _ (PLit l) = showString $ show l
+  showsPrec x (PCon n ps)  = showParen (x > 0)
+    $ showsPrec 10 (LCon n :: Exp VName)
+    . foldl (.) id (fmap ((showString " " .) . showsPrec 10) ps)
+
+
+data GenDataCon = GenDataCon
+  { gdcName      :: VName
+  , gdcConType   :: Qual Type
+  , gdcFinalType :: Qual Type
+  , gdcCon       :: Exp VName
+  } deriving (Eq, Show)
+
+
+data CompUnit = CompUnit
+  { cuClasses :: [Class]
+  , cuInsts   :: [InstRep Pred]
+  , cuGDCs    :: [GenDataCon]
+  , cuRecords :: [(GenDataCon, [(VName, (Qual Type, Exp VName))])]
+  , cuDecls   :: Map VName (Qual Type, Exp VName)
+  } deriving (Eq, Show)
+
 
 instance Show (Exp VName) where
   showsPrec x (V a) =
-    showParen (all ((||) <$> isSymbol <*> isPunctuation) $ unVName a)
+    showParen ((||) <$> all ((||) <$> isSymbol <*> isPunctuation) <*> elem ' ' $ unVName a)
       $ showsPrec x a
   showsPrec x (LCon a) =
-    showsPrec x $ TCon (TName (unVName a) KStar)
+    showsPrec x (TCon (TName (unVName a) KStar))
+    . showString "#"
   showsPrec x (V "." :@ a :@ b) =
     showParen (x >= 9)
       $ showsPrec 9 a
@@ -354,13 +374,10 @@ instance Show Pred where
   show (IsInst a b) = show a <> " (" <> show b <> ")"
 
 
-instance Show CName where
-  show = unCName
-
 
 data Class = Class
-  { cVars    :: [TName]
-  , cName    :: CName
+  { cVars    :: TName
+  , cName    :: TName
   , cMethods :: Map VName (Qual Type)
   } deriving (Eq, Ord, Show)
 
@@ -375,7 +392,7 @@ class Types a where
   sub :: Subst -> a -> a
 
 
-instance Types Assump where
+instance Types a => Types (Assump a) where
   free (_ :>: a)  = free a
   sub s (x :>: a) = x :>: sub s a
 
