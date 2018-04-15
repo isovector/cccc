@@ -140,24 +140,24 @@ stdLib' =
   , ("apply",
       ( [CCat "k"]
           :=> (TCat "k" (TProd ("a" :-> "b") "a") "b")
-      , undefined
+      , "undefined"
       ))
   , ("curry",
       ( [CCat "k"]
           :=> TCat "k" (TProd "a" "b") "c"
           :-> TCat "k" "a" ("b" :-> "c")
-      , undefined
+      , "undefined"
       ))
   , ("fork",
       ( [CCat "k"]
           :=> TCat "k" "a" "c"
           :-> TCat "k" "a" "d"
           :-> TCat "k" "a" (TProd "c" "d")
-      , undefined
+      , "undefined"
       ))
   , ("==",
       ( [IsInst "Eq" "a"] :=> "a" :-> "a" :-> TBool
-      , undefined
+      , "undefined"
       ))
   , ("id",
       ( [CCat "k"] :=> TCat "k" "a" "a"
@@ -172,11 +172,11 @@ stdLib' =
   , ("ccc",
       ( [CCat "k"]
           :=> ("a" :-> "b") :-> TSum (TCat "k" "a" "b") TUnit
-      , undefined
+      , "undefined"
       ))
   , ("error",
       ( [] :=> TString :-> "a"
-      , undefined
+      , "undefined"
       ))
   , ("undefined",
       ( [] :=> "a"
