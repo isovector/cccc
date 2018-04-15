@@ -9,6 +9,7 @@ import           Compiler
 import           Data.Bifunctor (first, second)
 import           Data.Map (Map)
 import qualified Data.Map as M
+import           Evaluation
 import           TypeChecking
 import           Types
 import           Utils
@@ -106,7 +107,18 @@ preludeSource = CompUnit
     , InstRep ([] :=> IsInst "Eq" TInt)
       $ M.fromList
       [ ( "=="
-        , "error" :@ LString "eq not defined for ints yet"
+        , lam "x" $ lam "y" $
+            Lit (LitNative "eqInt" $ TInt :-> TInt :-> TBool)
+              :@ "x" :@ "y"
+        )
+      ]
+
+    , InstRep ([] :=> IsInst "Eq" TString)
+      $ M.fromList
+      [ ( "=="
+        , lam "x" $ lam "y" $
+            Lit (LitNative "eqString" $ TString :-> TString :-> TBool)
+              :@ "x" :@ "y"
         )
       ]
 
@@ -187,7 +199,9 @@ preludeSource = CompUnit
 
     , ("error"
       , ( [] :=> TString :-> "a"
-        , "undefined"
+        , lam "x" $
+            Lit (LitNative "error" $ TString :-> "a")
+              :@ "x"
         )
       )
 

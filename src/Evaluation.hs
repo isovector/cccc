@@ -9,6 +9,7 @@ import           Bound
 import           Compiler
 import           Control.Lens ((<&>))
 import           Control.Monad (join)
+import           Data.Bool (bool)
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Maybe (mapMaybe)
@@ -39,6 +40,26 @@ extract (PLit _) _       = Nothing
 
 
 whnf :: Map VName (Exp VName) -> Exp VName -> Exp VName
+whnf std a
+  | Just (func, as) <- unravelNative a
+  = case func of
+      "eqInt" ->
+        case fmap (whnf std) as of
+          [LInt a1, LInt a2] -> bool "False" "True" $ a1 == a2
+          _ -> "bad args to eqInt"
+
+      "eqString" ->
+        case fmap (whnf std) as of
+          [LString a1, LString a2] -> bool "False" "True" $ a1 == a2
+          _ -> "bad args to eqString"
+
+      "error" ->
+        case fmap (whnf std) as of
+          [LString a1] -> error a1
+          _ -> "bad args to error"
+
+      _ ->  error $ "unimplemented native " <> func
+
 whnf std (V name) =
   case M.lookup name std of
     Just x  -> x
@@ -66,6 +87,6 @@ eval
     -> Exp VName
 eval std (cenv, sym) e =
   case runTI $ typeInference cenv sym e of
-    Left e -> error $ "failed to compile:\n" <> e
+    Left err -> error $ "failed to compile:\n" <> err
     Right (_, e') -> whnf std e'
 

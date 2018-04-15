@@ -219,11 +219,14 @@ data Exp a
 data Lit
   = LitInt Int
   | LitString String
+  | LitNative String Type
   deriving (Eq, Ord)
 
 instance Show Lit where
-  show (LitInt i) = show i
-  show (LitString i) = show i
+  showsPrec _ (LitInt i)    = showString $ show i
+  showsPrec _ (LitString i) = showString $ show i
+  showsPrec _ (LitNative a t) =
+    showsPrec 10 $ Assert (V (VName "NATIVE") :@ V (VName a)) t
 
 
 instance IsString a => IsString (Exp a) where

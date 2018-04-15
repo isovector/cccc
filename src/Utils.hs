@@ -41,6 +41,14 @@ unravel = go []
     go _ _ = Nothing
 
 
+unravelNative :: Exp a -> Maybe (String, [Exp a])
+unravelNative = go []
+  where
+    go acc (Lit (LitNative a _)) = pure (a, acc)
+    go acc (a :@ b)              = go (b : acc) a
+    go _ _                       = Nothing
+
+
 letters :: [String]
 letters = do
   b <- "":letters
