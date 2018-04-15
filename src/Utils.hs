@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell   #-}
 {-# LANGUAGE TupleSections     #-}
+{-# OPTIONS_GHC -Wall  #-}
 
 module Utils where
 
@@ -13,7 +14,6 @@ import           Data.List (nub)
 import qualified Data.Map as M
 import           Data.Monoid ((<>))
 import qualified Data.Set as S
-import           Data.Traversable (for)
 import           Debug.Trace  (trace)
 import           Types
 
@@ -75,7 +75,8 @@ kind (a :@@ b) = do
     kal :>> kar -> do
       when (kal /= kb) $ kerr kal
       pure kar
-    KStar -> kerr KStar
+    KStar       -> kerr KStar
+    KConstraint -> kerr KConstraint
 
 
 
@@ -147,7 +148,7 @@ buildDictType (Class _ n ms) =
 
 
 buildDict :: GenDataCon -> InstRep Pred -> (VName, (Qual Type, Exp VName))
-buildDict gdc (InstRep (qs :=> i@(IsInst c t)) impls) =
+buildDict gdc (InstRep (_ :=> i@(IsInst c t)) impls) =
     (VName dict,)
       -- TODO(sandy): buggy; doesn't do nested dicts
       -- TODO(sandy): also buggy. we should just run the type checker on this

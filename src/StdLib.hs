@@ -1,16 +1,14 @@
 {-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications  #-}
+{-# OPTIONS_GHC -Wall          #-}
 
 module StdLib where
 
 import           Compiler
-import           Control.Arrow ((***))
-import           Control.Monad (join)
 import           Data.Bifunctor (first, second)
 import           Data.Map (Map)
 import qualified Data.Map as M
-import           Data.Monoid ((<>))
 import           TypeChecking
 import           Types
 import           Utils

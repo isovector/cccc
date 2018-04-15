@@ -1,12 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections     #-}
 {-# LANGUAGE TypeApplications  #-}
+{-# OPTIONS_GHC -Wall          #-}
 
 module Compiler where
 
 import           Control.Lens ((<&>))
 import           Control.Monad (join)
-import           Data.Bifunctor (second)
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Monoid ((<>))
