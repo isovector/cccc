@@ -13,7 +13,6 @@ import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Maybe (mapMaybe)
 import           Data.Monoid ((<>))
-import           StdLib
 import           TypeChecking
 import           Types
 import           Utils

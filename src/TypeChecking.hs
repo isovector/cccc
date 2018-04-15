@@ -264,14 +264,14 @@ discharge
           )
 discharge cenv p = do
   x <- for (getQuals cenv) $ \(a :=> b) -> do
-    s <- (fmap (a,) <$> match' b p) <|> pure Nothing
+    s <- (fmap (a, b,) <$> match' b p) <|> pure Nothing
     pure $ First s
   case getFirst $ mconcat x of
-    Just (ps, s) -> do
+    Just (ps, b, s) -> do
       (s', ps', mp, as, ds) <- fmap mconcat
                          . traverse (discharge cenv)
                          $ sub s ps
-      let d = V . VName $ getDict p
+      let d = V . VName $ getDict b
           e = foldl (:@) d ds
       pure $ (s', ps', mp <> M.singleton p e, as, pure e)
     Nothing -> do

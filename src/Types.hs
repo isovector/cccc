@@ -167,6 +167,9 @@ pattern PFalse = PCon "False" []
 pattern PTrue :: Pat
 pattern PTrue = PCon "True" []
 
+pattern PProd :: Pat -> Pat -> Pat
+pattern PProd a b = PCon "," [a, b]
+
 
 
 -- | a new variable to introduce

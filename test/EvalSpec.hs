@@ -18,16 +18,16 @@ import           Utils
 
 eval :: Exp VName -> Exp VName -> SpecWith ()
 eval v e = it (show e <> " |=> " <> show v) $
-  whnf (fmap snd stdLib') e `shouldBe` v
+  whnf prelude e `shouldBe` v
 
 evalDicts :: Exp VName -> Exp VName -> SpecWith ()
 evalDicts v e = it (show e <> " |=> " <> show v) $ do
   let Right (_, e') = test'' e
-  whnf (fmap snd stdLib') e' `shouldBe` v
+  whnf prelude e' `shouldBe` v
 
 
 getDef :: VName -> Exp VName
-getDef n = fmap snd stdLib' M.! n
+getDef n = prelude M.! n
 
 
 spec :: Spec
