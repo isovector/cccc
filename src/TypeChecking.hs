@@ -40,11 +40,11 @@ unify t1 t2 = do
   pure ()
 
 
-newVName :: (Int -> a) -> TI a
+newVName :: String -> TI VName
 newVName f = do
   n <- view tiVNames <$> get
   modify $ tiVNames %~ (+1)
-  pure $ f n
+  pure $ VName $ f <> show n
 
 
 newTyVar :: Kind -> TI Type
@@ -118,44 +118,43 @@ inferLit (LitString _) = TString
 
 
 infer
-    :: (Int -> VName)
-    -> SymTable VName
+    :: SymTable VName
     -> Exp VName
     -> TI ([Pred], Type, Placeholder (Exp VName))
-infer f env (Assert e t) = do
-  (p1, t1, h1) <- infer f env e
+infer env (Assert e t) = do
+  (p1, t1, h1) <- infer env e
   unify t t1
   s <- view tiSubst <$> get
   pure (sub s p1, t, Assert <$> h1 <*> pure t)
-infer _ (SymTable env) (V a) =
+infer (SymTable env) (V a) =
   case M.lookup a env of
     Nothing -> throwE $ "unbound variable: '" <> show a <> "'"
     Just sigma -> do
       (ps :=> x, h) <- freshInst a sigma
       pure (ps, x, h)
-infer f env (Let n e1 b) = do
-  name <- newVName f
+infer env (Let n e1 b) = do
+  name <- newVName "v"
   let e2 = splatter name b
-  (p1, t1, h1) <- infer f env e1
+  (p1, t1, h1) <- infer env e1
   let t'   = generalize env $ p1 :=> t1
       env' = SymTable $ M.insert name t' $ unSymTable env
-  (p2, t2, h2) <- infer f env' e2
+  (p2, t2, h2) <- infer env' e2
   pure (p2, t2, let_ <$> pure n <*> h1 <*> h2)
-infer _ _ h@(Lit l) = pure (mempty, inferLit l, pure h)
+infer _ h@(Lit l) = pure (mempty, inferLit l, pure h)
 
 -- TODO(sandy): maybe this is wrong?
-infer f env (LCon a) = infer f env (V a)
+infer env (LCon a) = infer env (V a)
 
-infer f env (Case e ps) = do
+infer env (Case e ps) = do
   t <- newTyVar KStar
-  (p1, te, h1) <- infer f env e
+  (p1, te, h1) <- infer env e
   (p2, tps, h2) <- fmap unzip3 $ for ps $ \(pat, pexp) -> do
     (as, ts) <- inferPattern env pat
     unify te ts
     let env' = SymTable $ M.fromList (as <&> \(i :>: x) -> (i, x))
                        <> unSymTable env
         pexp' = instantiate V pexp
-    (p2, tp, h2) <- infer f env' pexp'
+    (p2, tp, h2) <- infer env' pexp'
     unify t tp
     pure (p2, tp, (,) <$> pure pat <*> h2)
 
@@ -163,19 +162,19 @@ infer f env (Case e ps) = do
 
   pure (p1 <> join p2, t, case_ <$> h1 <*> sequence h2)
 
-infer f (SymTable env) (Lam n x) = do
-  name <- newVName f
+infer (SymTable env) (Lam n x) = do
+  name <- newVName "v"
   tv <- newTyVar KStar
   let env' = SymTable $ env <> [(name, mkScheme tv)]
       e = splatter name x
-  (p1, t1, h1) <- infer f env' e
+  (p1, t1, h1) <- infer env' e
   pure (p1, TArr tv t1, lam <$> pure n <*> h1)
 
-infer f env exp@(e1 :@ e2) =
+infer env exp@(e1 :@ e2) =
   do
     tv <- newTyVar KStar
-    (p1, t1, h1) <- infer f env e1
-    (p2, t2, h2) <- infer f env e2
+    (p1, t1, h1) <- infer env e1
+    (p2, t2, h2) <- infer env e2
     unify t1 $ TArr t2 tv
     pure (p1 <> p2, tv, (:@) <$> h1 <*> h2)
   `catchE` \e -> throwE $
@@ -205,7 +204,7 @@ inferPattern st (PCon c ps) = do
   (as, ts) <- first join . unzip <$> for ps (inferPattern st)
   -- this is gross! there is a bug here if the type constructor has constraints
   -- on it
-  (_, ct, _) <- infer (error "unused") st $ V c
+  (_, ct, _) <- infer st $ V c
   unify ct $ foldr (:->) t ts
   pure (as, t)
 
@@ -216,7 +215,7 @@ typeInference
     -> Exp VName
     -> TI (Qual Type, Exp VName)
 typeInference cenv env e = do
-  (ps, t, h) <- infer (VName . ("!!!v" <>) . show) (SymTable env) e
+  (ps, t, h) <- infer (SymTable env) e
   s <- view tiSubst <$> get
   zs <- traverse (discharge cenv) $ sub (flatten s) ps
   let (s', ps', _, _) = mconcat zs
