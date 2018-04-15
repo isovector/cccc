@@ -13,6 +13,7 @@ import           Bound.Scope
 import           Control.Applicative ((<|>))
 import           Control.Lens ((<&>), view, (%~), (<>~))
 import           Control.Monad.State
+import           Control.Monad.Reader
 import           Control.Monad.Trans.Except
 import           Data.Bifunctor
 import           Data.Bool (bool)
@@ -26,6 +27,9 @@ import           Data.Traversable (for)
 import           Prelude hiding (exp)
 import           Types
 import           Utils
+
+
+type Placeholder = Reader (Pred -> Exp VName)
 
 
 unify :: Type -> Type -> TI ()
@@ -50,11 +54,22 @@ newTyVar k = do
   pure . TVar . flip TFreshName k $ letters !! n
 
 
-freshInst :: Scheme -> TI (Qual Type)
-freshInst (Scheme vars t) = do
+freshInst :: VName -> Scheme -> TI (Qual Type, Placeholder (Exp VName))
+freshInst n (Scheme vars t) = do
   nvars <- traverse newTyVar $ fmap tKind vars
   let subst = Subst $ M.fromList (zip vars nvars)
-  pure $ sub subst t
+      t'@(qs :=> _) = sub subst t
+  pure (t', liftPlaceholders n qs)
+
+
+liftPlaceholders
+    :: VName
+    -> [Pred]
+    -> Placeholder (Exp VName)
+liftPlaceholders name ps = do
+  f <- ask
+  let dicts = fmap f ps
+  pure $ foldl (:@) (V name) dicts
 
 
 mgu :: Type -> Type -> TI Subst
@@ -106,70 +121,63 @@ infer
     :: (Int -> VName)
     -> SymTable VName
     -> Exp VName
-    -> TI ([Pred], Type)
+    -> TI ([Pred], Type, Placeholder (Exp VName))
 infer f env (Assert e t) = do
-  (p1, t1) <- infer f env e
+  (p1, t1, h1) <- infer f env e
   unify t t1
   s <- view tiSubst <$> get
-  pure (sub s p1, t)
+  pure (sub s p1, t, Assert <$> h1 <*> pure t)
 infer _ (SymTable env) (V a) =
   case M.lookup a env of
     Nothing -> throwE $ "unbound variable: '" <> show a <> "'"
     Just sigma -> do
-      (ps :=> x) <- freshInst sigma
-      pure (ps, x)
-infer f env (Let _ e1 b) = do
+      (ps :=> x, h) <- freshInst a sigma
+      pure (ps, x, h)
+infer f env (Let n e1 b) = do
   name <- newVName f
   let e2 = splatter name b
-  (p1, t1) <- infer f env e1
+  (p1, t1, h1) <- infer f env e1
   let t'   = generalize env $ p1 :=> t1
       env' = SymTable $ M.insert name t' $ unSymTable env
-  (p2, t2) <- infer f env' e2
-  pure (p2, t2)
-infer _ _ (Lit l) = pure (mempty, inferLit l)
+  (p2, t2, h2) <- infer f env' e2
+  pure (p2, t2, let_ <$> pure n <*> h1 <*> h2)
+infer _ _ h@(Lit l) = pure (mempty, inferLit l, pure h)
 
 -- TODO(sandy): maybe this is wrong?
 infer f env (LCon a) = infer f env (V a)
 
-infer f env (LProd a b) = do
-  t <- newTyVar KStar
-  (p1, t1) <- infer f env a
-  (p2, t2) <- infer f env b
-  unify t $ TProd t1 t2
-  pure (p1 <> p2, t)
-
 infer f env (Case e ps) = do
   t <- newTyVar KStar
-  (p1, te) <- infer f env e
-  (p2, tps) <- fmap unzip $ for ps $ \(pat, pexp) -> do
+  (p1, te, h1) <- infer f env e
+  (p2, tps, h2) <- fmap unzip3 $ for ps $ \(pat, pexp) -> do
     (as, ts) <- inferPattern env pat
     unify te ts
     let env' = SymTable $ M.fromList (as <&> \(i :>: x) -> (i, x))
                        <> unSymTable env
         pexp' = instantiate V pexp
-    (p2, tp) <- infer f env' pexp'
+    (p2, tp, h2) <- infer f env' pexp'
     unify t tp
-    pure (p2, tp)
+    pure (p2, tp, (,) <$> pure pat <*> h2)
 
   for_ (zip tps $ tail tps) $ uncurry $ flip unify
 
-  pure (p1 <> join p2, t)
+  pure (p1 <> join p2, t, case_ <$> h1 <*> sequence h2)
 
-infer f (SymTable env) (Lam _ x) = do
+infer f (SymTable env) (Lam n x) = do
   name <- newVName f
   tv <- newTyVar KStar
   let env' = SymTable $ env <> [(name, mkScheme tv)]
       e = splatter name x
-  (p1, t1) <- infer f env' e
-  pure (p1, TArr tv t1)
+  (p1, t1, h1) <- infer f env' e
+  pure (p1, TArr tv t1, lam <$> pure n <*> h1)
 
 infer f env exp@(e1 :@ e2) =
   do
     tv <- newTyVar KStar
-    (p1, t1) <- infer f env e1
-    (p2, t2) <- infer f env e2
+    (p1, t1, h1) <- infer f env e1
+    (p2, t2, h2) <- infer f env e2
     unify t1 $ TArr t2 tv
-    pure (p1 <> p2, tv)
+    pure (p1 <> p2, tv, (:@) <$> h1 <*> h2)
   `catchE` \e -> throwE $
     mconcat
       [ e
@@ -180,7 +188,7 @@ infer f env exp@(e1 :@ e2) =
       ]
 
 
-inferPattern :: SymTable VName -> Pat -> TI ([Assump], Type)
+inferPattern :: SymTable VName -> Pat -> TI ([Assump Scheme], Type)
 inferPattern _ (PLit l) = do
   pure (mempty, inferLit l)
 inferPattern _ PWildcard = do
@@ -197,20 +205,26 @@ inferPattern st (PCon c ps) = do
   (as, ts) <- first join . unzip <$> for ps (inferPattern st)
   -- this is gross! there is a bug here if the type constructor has constraints
   -- on it
-  (_, ct) <- infer (error "unused") st $ V c
+  (_, ct, _) <- infer (error "unused") st $ V c
   unify ct $ foldr (:->) t ts
   pure (as, t)
 
 
-typeInference :: ClassEnv -> Map VName Scheme -> Exp VName -> TI (Qual Type)
+typeInference
+    :: ClassEnv
+    -> Map VName Scheme
+    -> Exp VName
+    -> TI (Qual Type, Exp VName)
 typeInference cenv env e = do
-  (ps, t) <- infer (VName . ("!!!v" <>) . show) (SymTable env) e
+  (ps, t, h) <- infer (VName . ("!!!v" <>) . show) (SymTable env) e
   s <- view tiSubst <$> get
   zs <- traverse (discharge cenv) $ sub (flatten s) ps
-  let (s', ps') = mconcat zs
+  let (s', ps', _, _) = mconcat zs
       s'' = flatten $ s <> s'
       (ps'' :=> t') = sub s'' $ ps' :=> t
-  errorAmbiguous $ nub ps'' :=> t'
+      t'' = nub ps'' :=> t'
+  _ <- errorAmbiguous t''
+  pure (t'', runReader h $ V . VName . show . sub s'')
 
 
 flatten :: Subst -> Subst
@@ -223,6 +237,11 @@ flatten (Subst x) = fix $ \(Subst final) ->
 
 generalize :: SymTable a -> Qual Type -> Scheme
 generalize env t =
+  Scheme (S.toList $ free t S.\\ free env) t
+
+
+generalizing :: SymTable a -> Qual Type -> Scheme
+generalizing env t =
   Scheme (S.toList $ free t S.\\ free env) t
 
 
@@ -247,7 +266,14 @@ normalize (Scheme _ body) =
         Nothing -> error "type variable not in signature"
 
 
-discharge :: ClassEnv -> Pred -> TI (Subst, [Pred])
+discharge
+    :: ClassEnv
+    -> Pred
+    -> TI ( Subst
+          , [Pred]
+          , Map Pred (Exp VName)
+          , [Assump (Qual Type)]
+          )
 discharge cenv p = do
   x <- for (getQuals cenv) $ \(a :=> b) -> do
     s <- (fmap (a,) <$> match' b p) <|> pure Nothing
@@ -255,7 +281,8 @@ discharge cenv p = do
   case getFirst $ mconcat x of
     Just (ps, s) ->
       fmap mconcat $ traverse (discharge cenv) $ sub s $ ps
-    Nothing -> pure $ (mempty, pure p)
+    Nothing -> do
+      pure $ (mempty, pure p, mempty, mempty)
 
 
 errorAmbiguous :: Qual Type -> TI (Qual Type)

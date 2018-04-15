@@ -180,9 +180,9 @@ instance Show Pat where
 
 
 -- | a new variable to introduce
-data Assump
-  = VName :>: Scheme
-  deriving (Eq, Ord)
+data Assump a
+  = VName :>: a
+  deriving (Eq, Ord, Show)
 
 
 data Scheme = Scheme
@@ -284,7 +284,6 @@ deriveShow1 ''Exp
 deriving instance Eq a   => Eq (Exp a)
 deriving instance {-# OVERLAPPABLE #-} Show a => Show (Exp a)
 deriving instance Show Scheme
-deriving instance Show Assump
 
 instance Show (Exp VName) where
   showsPrec x (V a) =
@@ -375,7 +374,7 @@ class Types a where
   sub :: Subst -> a -> a
 
 
-instance Types Assump where
+instance Types a => Types (Assump a) where
   free (_ :>: a)  = free a
   sub s (x :>: a) = x :>: sub s a
 

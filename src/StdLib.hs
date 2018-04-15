@@ -193,15 +193,21 @@ stdLib' =
         $ getInstReps classEnv)
 
 
-test' :: Exp VName -> Either String (Qual Type)
-test' = second normalizeType
+test'' :: Exp VName -> Either String (Qual Type, Exp VName)
+test'' = second (first normalizeType)
       . runTI
       . typeInference classEnv stdLib
 
 
+test' :: Exp VName -> Either String (Qual Type)
+test' = fmap fst . test''
+
+
 test :: Exp VName -> IO ()
 test x =
-  case test' x of
+  case test'' x of
     Left e  -> putStrLn e
-    Right t -> putStrLn $ show t
+    Right (t, e) -> do
+      putStrLn $ show t
+      putStrLn $ show e
 
