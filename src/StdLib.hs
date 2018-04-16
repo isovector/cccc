@@ -53,6 +53,18 @@ preludeSource = CompUnit
         )
       ]
 
+    , InstRep ([] :=> IsInst (CK2 "Functor") (TCon $ CK1 "List")) $ M.fromList
+      [ ( "fmap"
+        , lam "f" $ lam "la" $
+            case_ "la"
+              [ ( PCon "Cons" ["a", "as"]
+                , "Cons" :@ ("f" :@ "a")
+                         :@ ("fmap" :@ "f" :@ "as"))
+              , (PCon "Nil" [], "Nil")
+              ]
+        )
+      ]
+
     , InstRep ([] :=> IsInst (CK1 "Eq") TBool) $ M.fromList
       [ ( "=="
         , lam "x" $ lam "y" $
@@ -161,6 +173,10 @@ preludeSource = CompUnit
         TCon (TName "Maybe" $ KStar :>> KStar) :@@ "a"
     , buildDataCon "Just" ["a"]   . Just $
         TCon (TName "Maybe" $ KStar :>> KStar) :@@ "a"
+    , buildDataCon "Nil" []  . Just $
+        TCon (TName "List" $ KStar :>> KStar) :@@ "a"
+    , buildDataCon "Cons" ["a", TCon (TName "List" $ KStar :>> KStar) :@@ "a"]   . Just $
+        TCon (TName "List" $ KStar :>> KStar) :@@ "a"
     ]
 
   , cuRecords =
