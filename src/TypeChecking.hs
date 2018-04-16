@@ -239,6 +239,12 @@ typeInference cenv sym e = do
       te' = foldr (:->) (unqualType t'') $ fmap assumpVal as
   _ <- errorAmbiguous t''
   pure ((t'', te'), e')
+  `catchE` \err -> throwE $
+    mconcat
+      [ err
+      , "\n in "
+      , show e
+      ]
 
 
 flatten :: Subst -> Subst
@@ -283,6 +289,12 @@ discharge cenv p = do
            , pure $ param :>: getDictTypeForPred p
            , pure $ V param
            )
+  `catchE` \e -> throwE $
+    mconcat
+      [ e
+      , "\n when discharging "
+      , show p
+      ]
 
 
 errorAmbiguous :: Qual Type -> TI (Qual Type)

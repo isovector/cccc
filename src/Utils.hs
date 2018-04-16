@@ -144,12 +144,12 @@ getDict (IsInst c t) = "@" <> show c <> "@" <> show (normalizeType2 t)
 buildDictType
     :: Class
     -> (GenDataCon, [(VName, (Qual Type, Exp VName))])
-buildDictType (Class _ n ms) =
+buildDictType (Class v n ms) =
   buildRecord
     (VName name)
     -- TODO(sandy): there is a bug here if there is a constraint on the method
     (fmap (second unqualType . first ("@" <>)) $ M.assocs ms)
-    Nothing
+    $ Just ((TVar $ TName name $ tKind n) :@@ TVar v)
     -- (Just $ TCon (TName name KStar))
   where
     name = getDictName2 n

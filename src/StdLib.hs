@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms   #-}
 {-# LANGUAGE TypeApplications  #-}
 {-# OPTIONS_GHC -Wall          #-}
 
@@ -19,16 +20,40 @@ prelude :: Map VName (Exp VName)
 preludeEnv :: (ClassEnv, SymTable VName)
 Right (prelude, preludeEnv) = runTI $ compile preludeSource
 
+pattern CK2 :: String -> TName
+pattern CK2 str = TName str ((KStar :>> KStar) :>> KStar)
+
+pattern CK1 :: String -> TName
+pattern CK1 str = TName str (KStar :>> KStar)
+
 preludeSource :: CompUnit
 preludeSource = CompUnit
   { cuClasses =
-    [ Class "a" "Eq"
+    [ Class "a" (CK1 "Eq")
       $ M.fromList [("==", [] :=> "a" :-> "a" :-> TBool)]
+
+    , let func = CK1 "f"
+       in Class func (CK2 "Functor")
+        $ M.fromList
+
+        [("fmap", []
+            :=> ("a" :-> "b") :-> TVar func :@@ "a" :-> TVar func :@@ "b")]
+
     , Class "a" "Category" mempty
     ]
 
   , cuInsts =
-    [ InstRep ([] :=> IsInst "Eq" TBool) $ M.fromList
+    [ InstRep ([] :=> IsInst (CK2 "Functor") (TCon $ CK1 "Maybe")) $ M.fromList
+      [ ( "fmap"
+        , lam "f" $ lam "ma" $
+            case_ "ma"
+              [ (PCon "Just" ["a"], "Just" :@ ("f" :@ "a"))
+              , (PCon "Nothing" [], "Nothing")
+              ]
+        )
+      ]
+
+    , InstRep ([] :=> IsInst (CK1 "Eq") TBool) $ M.fromList
       [ ( "=="
         , lam "x" $ lam "y" $
             case_ "x"
@@ -55,8 +80,8 @@ preludeSource = CompUnit
               ])
       ]
 
-    , InstRep ([IsInst "Eq" "a", IsInst "Eq" "b"]
-        :=> IsInst "Eq" (TProd "a" "b"))
+    , InstRep ([IsInst (CK1 "Eq") "a", IsInst (CK1 "Eq") "b"]
+        :=> IsInst (CK1 "Eq") (TProd "a" "b"))
       $ M.fromList
       [ ( "=="
         , lam "x" $ lam "y" $
@@ -68,8 +93,8 @@ preludeSource = CompUnit
               ])
       ]
 
-    , InstRep ([IsInst "Eq" "a", IsInst "Eq" "b"]
-        :=> IsInst "Eq" (TSum "a" "b"))
+    , InstRep ([IsInst (CK1 "Eq") "a", IsInst (CK1 "Eq") "b"]
+        :=> IsInst (CK1 "Eq") (TSum "a" "b"))
       $ M.fromList
       [ ( "=="
         , lam "x" $ lam "y" $
@@ -97,14 +122,14 @@ preludeSource = CompUnit
               ])
       ]
 
-    , InstRep ([] :=> IsInst "Eq" TUnit)
+    , InstRep ([] :=> IsInst (CK1 "Eq") TUnit)
       $ M.fromList
       [ ( "=="
         , lam "x" $ lam "y" "True"
         )
       ]
 
-    , InstRep ([] :=> IsInst "Eq" TInt)
+    , InstRep ([] :=> IsInst (CK1 "Eq") TInt)
       $ M.fromList
       [ ( "=="
         , lam "x" $ lam "y" $
@@ -113,7 +138,7 @@ preludeSource = CompUnit
         )
       ]
 
-    , InstRep ([] :=> IsInst "Eq" TString)
+    , InstRep ([] :=> IsInst (CK1 "Eq") TString)
       $ M.fromList
       [ ( "=="
         , lam "x" $ lam "y" $
@@ -132,6 +157,10 @@ preludeSource = CompUnit
     , buildDataCon "False" []  . Just $ TBool
     , buildDataCon "True" []   . Just $ TBool
     , buildDataCon "Unit" []   . Just $ TUnit
+    , buildDataCon "Nothing" []  . Just $
+        TCon (TName "Maybe" $ KStar :>> KStar) :@@ "a"
+    , buildDataCon "Just" ["a"]   . Just $
+        TCon (TName "Maybe" $ KStar :>> KStar) :@@ "a"
     ]
 
   , cuRecords =

@@ -62,7 +62,7 @@ whnf std a
 
 whnf std (V name) =
   case M.lookup name std of
-    Just x  -> x
+    Just x  -> whnf std x
     Nothing -> error $ "variable '" <> show name <> "' not in scope"
 whnf _ z@(LCon _) = z
 whnf std (f :@ a) =
