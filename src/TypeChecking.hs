@@ -74,7 +74,7 @@ liftPlaceholders name ps = do
   let dicts = fmap f ps
   pure $ case length dicts of
     0 -> V name
-    _ -> foldl (:@) (V $ VName $ "@" <> unVName name) dicts
+    _ -> foldl (:@) (V name) dicts
 
 
 mgu :: Type -> Type -> TI Subst

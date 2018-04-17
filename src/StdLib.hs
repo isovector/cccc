@@ -20,6 +20,10 @@ prelude :: Map VName (Exp VName)
 preludeEnv :: (ClassEnv, SymTable VName)
 Right (prelude, preludeEnv) = runTI $ compile preludeSource
 
+
+pattern CK3 :: String -> TName
+pattern CK3 str = TName str ((KStar :>> KStar) :>> KStar :>> KStar)
+
 pattern CK2 :: String -> TName
 pattern CK2 str = TName str ((KStar :>> KStar) :>> KStar)
 
@@ -62,6 +66,16 @@ preludeSource = CompUnit
                          :@ ("fmap" :@ "f" :@ "as"))
               , (PCon "Nil" [], "Nil")
               ]
+        )
+      ]
+
+    , InstRep ([] :=> IsInst (CK2 "Functor")
+        ((TCon $ CK3 "Coyoneda") :@@ TVar (CK1 "f")) ) $ M.fromList
+      [ ( "fmap"
+        , lam "f" $ lam "c" $
+            "Coyoneda"
+              :@ ("." :@ "f" :@ ("coFn" :@ "c"))
+              :@ ("coFm" :@ "c")
         )
       ]
 
@@ -181,6 +195,17 @@ preludeSource = CompUnit
 
   , cuRecords =
     [ buildRecord "," [("fst", "a"), ("snd", "b")] Nothing
+
+    , let f = TVar (TName "f" $ KStar :>> KStar)
+       in buildRecord
+            "Coyoneda"
+            [ ("coFn", "b" :-> "a")
+            , ("coFm", f :@@ "b")
+            ]
+            $ Just
+            $ TCon (TName "Coyoneda" $ (KStar :>> KStar) :>> KStar :>> KStar)
+                :@@ f
+                :@@ "a"
     ]
 
   , cuDecls = M.fromList
@@ -220,7 +245,7 @@ preludeSource = CompUnit
       )
 
     , ( "id"
-      , ( [CCat "k"] :=> TCat "k" "a" "a"
+      , ( [] :=> "a" :-> "a"
         , lam "x" "x"
         )
       )
@@ -234,10 +259,10 @@ preludeSource = CompUnit
       )
 
     , ( "."
-      , ( [CCat "k"]
-            :=> TCat "k" "b" "c"
-            :-> TCat "k" "a" "b"
-            :-> TCat "k" "a" "c"
+      , ( []
+            :=> TArr "b" "c"
+            :-> TArr "a" "b"
+            :-> TArr "a" "c"
         , lam "f" $ lam "g" $ lam "x" $ "f" :@ ("g" :@ "x")
         )
       )
@@ -247,6 +272,30 @@ preludeSource = CompUnit
         , lam "x" $
             Lit (LitNative "error" $ TString :-> "a")
               :@ "x"
+        )
+      )
+
+    , ( "liftCoyoneda"
+      , ( [] :=> TK1 "f" "a"
+             :-> TCon (CK3 "Coyoneda")
+                    :@@ TVar (TName "f" K1)
+                    :@@ "a"
+        , "Coyoneda" :@ "id"
+        )
+      )
+
+    , ( "lowerCoyoneda"
+      , ( [IsInst (CK2 "Functor") (TVar $ CK1 "f") ]
+             :=> TCon (CK3 "Coyoneda") :@@ (TVar $ CK1 "f") :@@ "a"
+             :-> (TVar $ CK1 "f") :@@ "a"
+        , lam "c" $ "fmap" :@ ("coFn" :@ "c") :@ ("coFm" :@ "c")
+        )
+      )
+
+    , ( "head"
+      , ( [] :=> TCon (CK1 "List") :@@ "a"
+             :-> "a"
+        , lam "c" $ case_ "c" [(PCon "Cons" ["a", PWildcard], "a")]
         )
       )
 

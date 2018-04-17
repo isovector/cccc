@@ -63,6 +63,12 @@ pattern TK2 c a b = TVar (TName c K2) :@@ a :@@ b
 pattern K2 :: Kind
 pattern K2 = KStar :>> KStar :>> KStar
 
+pattern TK1 :: String -> Type -> Type
+pattern TK1 c a = TVar (TName c K1) :@@ a
+
+pattern K1 :: Kind
+pattern K1 = KStar :>> KStar
+
 
 pattern TProd :: Type -> Type -> Type
 pattern TProd a b = TCon (TName "," K2) :@@ a :@@ b

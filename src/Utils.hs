@@ -144,11 +144,13 @@ getDict (IsInst c t) = "@" <> show c <> "@" <> show (normalizeType2 t)
 buildDictType
     :: Class
     -> (GenDataCon, [(VName, (Qual Type, Exp VName))])
-buildDictType (Class v n ms) =
+buildDictType c@(Class v n ms) =
+  second (fmap (second $ first $ dictToConstraint c))
+  $
   buildRecord
     (VName name)
     -- TODO(sandy): there is a bug here if there is a constraint on the method
-    (fmap (second unqualType . first ("@" <>)) $ M.assocs ms)
+    (fmap (second unqualType) $ M.assocs ms)
     $ Just ((TVar $ TName name $ tKind n) :@@ TVar v)
     -- (Just $ TCon (TName name KStar))
   where
@@ -165,6 +167,12 @@ buildDict gdc (InstRep (_ :=> i@(IsInst c t)) impls) =
   where
     dict = getDict i
     dname = getDictName2 c
+
+
+dictToConstraint :: Class -> Qual Type -> Qual Type
+dictToConstraint (Class v n _) (qs :=> (_ :-> t)) =
+  (IsInst n $ TVar v) : qs :=> t
+
 
 
 normalizeType :: Qual Type -> Qual Type

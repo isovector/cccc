@@ -20,13 +20,6 @@ getGDCBinding :: GenDataCon -> (VName, (Qual Type, Exp VName))
 getGDCBinding gdc = (gdcName gdc, (gdcConType gdc, gdcCon gdc))
 
 
-genMethods :: Class -> Map VName (Qual Type, Exp VName)
-genMethods c = flip M.mapWithKey (cMethods c) $ \k m ->
-  ( IsInst (cName c) (TVar $ cVars c) : qualPreds m :=> unqualType m
-  , V k
-  )
-
-
 compile :: CompUnit -> TI (Map VName (Exp VName), (ClassEnv, SymTable VName))
 compile cu = do
   -- build classes
@@ -64,7 +57,7 @@ compile cu = do
         , M.fromList instDicts
         , cuDecls cu
         , M.fromList . join . fmap snd $ cuRecords cu
-        ] <> fmap genMethods classes
+        ]
 
   -- build initial symbol table
   let sym = SymTable $ fmap (generalize (SymTable @VName mempty) . fst) allDefs
