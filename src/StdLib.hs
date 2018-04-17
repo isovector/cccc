@@ -22,13 +22,17 @@ Right (prelude, preludeEnv) = runTI $ compile preludeSource
 
 
 pattern CK3 :: String -> TName
-pattern CK3 str = TName str ((KStar :>> KStar) :>> KStar :>> KStar)
+pattern CK3 str = TName str ((KStar :>> KStar :>> KStar) :>> KStar)
 
 pattern CK2 :: String -> TName
 pattern CK2 str = TName str ((KStar :>> KStar) :>> KStar)
 
+pattern CKArr :: String -> TName
+pattern CKArr str = TName str (KStar :>> KStar :>> KStar)
+
 pattern CK1 :: String -> TName
 pattern CK1 str = TName str (KStar :>> KStar)
+
 
 preludeSource :: CompUnit
 preludeSource = CompUnit
@@ -43,7 +47,16 @@ preludeSource = CompUnit
         [("fmap", []
             :=> ("a" :-> "b") :-> TVar func :@@ "a" :-> TVar func :@@ "b")]
 
-    , Class "a" "Category" mempty
+    , Class (TName "k" K2) (CK3 "Category") $ M.fromList
+        [ ( "."
+          , [] :=> TCat "k" "b" "c"
+               :-> TCat "k" "a" "b"
+               :-> TCat "k" "a" "c"
+          )
+        , ( "id"
+          , [] :=> TCat "k" "a" "a"
+          )
+        ]
     ]
 
   , cuInsts =
@@ -173,7 +186,14 @@ preludeSource = CompUnit
         )
       ]
 
-    , InstRep ([] :=> IsInst "Category" TArrCon) mempty
+    , InstRep ([] :=> IsInst (CK3 "Category") TArrCon) $ M.fromList
+      [ ( "id"
+        , lam "x" "x"
+        )
+      , ( "."
+        , lam "f" $ lam "g" $ lam "x" $ "f" :@ ("g" :@ "x")
+        )
+      ]
 
     ]
 
@@ -244,26 +264,11 @@ preludeSource = CompUnit
         )
       )
 
-    , ( "id"
-      , ( [] :=> "a" :-> "a"
-        , lam "x" "x"
-        )
-      )
-
     , ( "const"
       , ( [CCat "k"]
             :=> "b"
             :-> TCat "k" "a" "b"
         , lam "x" $ lam "y" $ "x"
-        )
-      )
-
-    , ( "."
-      , ( []
-            :=> TArr "b" "c"
-            :-> TArr "a" "b"
-            :-> TArr "a" "c"
-        , lam "f" $ lam "g" $ lam "x" $ "f" :@ ("g" :@ "x")
         )
       )
 
